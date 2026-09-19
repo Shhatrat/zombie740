@@ -27,7 +27,7 @@ rm -rf build_dir/toolchain-*/gcc-*-initial build_dir/toolchain-*/gcc-*-final 2>/
 chown -R "$(stat -c '%u:%g' "$OPENWRT_DIR")" "$OPENWRT_DIR/tmp" 2>/dev/null || true
 
 echo "Starting build at $(date)"
-FORCE_UNSAFE_CONFIGURE=1 make -j1 2>&1 | tee "$LOG"
+FORCE_UNSAFE_CONFIGURE=1 make -j$(nproc) 2>&1 | tee "$LOG"
 
 SYSUPGRADE=$(find "$OPENWRT_DIR/bin/targets/ath79/tiny/" -name "*sysupgrade.bin" 2>/dev/null | head -1)
 FACTORY=$(find "$OPENWRT_DIR/bin/targets/ath79/tiny/" -name "*factory.bin" 2>/dev/null | head -1)
