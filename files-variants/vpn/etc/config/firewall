@@ -1,0 +1,45 @@
+config defaults
+	option input 'ACCEPT'
+	option output 'ACCEPT'
+	option forward 'REJECT'
+	option synflood_protect '1'
+
+config zone
+	option name 'lan'
+	option input 'ACCEPT'
+	option output 'ACCEPT'
+	option forward 'ACCEPT'
+	list network 'lan'
+
+config zone
+	option name 'wan'
+	option input 'DROP'
+	option output 'ACCEPT'
+	option forward 'DROP'
+	option masq '1'
+	option mtu_fix '1'
+	list network 'wan'
+
+config zone
+	option name 'vpn'
+	option input 'ACCEPT'
+	option output 'ACCEPT'
+	option forward 'ACCEPT'
+	list network 'vpn'
+
+config forwarding
+	option src 'lan'
+	option dest 'vpn'
+
+config rule
+	option name 'Allow-WireGuard'
+	option src 'wan'
+	option proto 'udp'
+	option dest_port '51820'
+	option target 'ACCEPT'
+
+config rule
+	option name 'Allow-SSH-LAN'
+	option src 'lan'
+	option dest_port '22'
+	option target 'ACCEPT'

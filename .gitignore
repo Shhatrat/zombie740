@@ -1,0 +1,24 @@
+# OpenWrt buildroot — clone separately
+openwrt/
+
+# Built firmware images — go to GitHub Releases, not the repo
+*.bin
+
+# Build logs
+build-*.log
+
+# Editor junk
+.DS_Store
+*.swp
+# Logs
+*.log
+build-banner.log
+
+# Internal tools
+.superpowers/
+docs/
+STATUS.md
+WNIOSKI.md
+test_script.sh
+monitor-temps.sh
+mockup/
