@@ -82,7 +82,14 @@ HTML
 }
 
 html_foot() {
-    echo "</main></body></html>"
+    cat << 'FOOT'
+</main>
+<footer style="text-align:center;padding:.8rem 1.2rem;font-size:.75rem;color:var(--pico-muted-color);border-top:1px solid var(--pico-muted-border-color);margin-top:1rem">
+  ZOMBIE740 &nbsp;·&nbsp; OpenWrt 24.10 &nbsp;·&nbsp; TL-WR740N v4 &nbsp;·&nbsp;
+  <a href="https://github.com/Shhatrat/zombie740" target="_blank" style="color:var(--pico-muted-color)">github.com/Shhatrat/zombie740</a>
+</footer>
+</body></html>
+FOOT
 }
 
 urldecode() {

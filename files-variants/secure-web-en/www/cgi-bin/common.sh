@@ -20,7 +20,7 @@ html_head() {
     echo ""
     cat << HTML
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="pl" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -75,14 +75,21 @@ pre{font-size:.78rem;max-height:200px;overflow-y:auto;margin:0;background:var(--
 <li><a href="/cgi-bin/vlan"$([ "$active" = "vlan" ] && echo ' class="active"')>VLAN</a></li>
 <li><a href="/cgi-bin/diag"$([ "$active" = "diag" ] && echo ' class="active"')>Diagnostics</a></li>
 <li><a href="/cgi-bin/system"$([ "$active" = "system" ] && echo ' class="active"')>System</a></li>
-<li><a href="/cgi-bin/logout" class="logout">Logout &#8594;</a></li>
+<li><a href="/cgi-bin/logout" class="logout">Logout >Wyloguj &#8594;</a>#8594;</a></li>
 </ul></nav>
 <main>
 HTML
 }
 
 html_foot() {
-    echo "</main></body></html>"
+    cat << 'FOOT'
+</main>
+<footer style="text-align:center;padding:.8rem 1.2rem;font-size:.75rem;color:var(--pico-muted-color);border-top:1px solid var(--pico-muted-border-color);margin-top:1rem">
+  ZOMBIE740 &nbsp;·&nbsp; OpenWrt 24.10 &nbsp;·&nbsp; TL-WR740N v4 &nbsp;·&nbsp;
+  <a href="https://github.com/Shhatrat/zombie740" target="_blank" style="color:var(--pico-muted-color)">github.com/Shhatrat/zombie740</a>
+</footer>
+</body></html>
+FOOT
 }
 
 urldecode() {
