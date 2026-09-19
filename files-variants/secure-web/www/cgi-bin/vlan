@@ -1,0 +1,209 @@
+#!/bin/sh
+. /www/cgi-bin/common.sh
+
+MSG=""
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    POST=$(parse_post)
+    ACTION=$(get_param "$POST" "action")
+
+    if [ "$ACTION" = "enable_vlan" ]; then
+        uci set network.switch0.enable_vlan='1'
+        uci commit network
+        /etc/init.d/network reload >/dev/null 2>&1
+        MSG='<div class="flash-ok">VLAN wlaczony na switch0.</div>'
+    fi
+
+    if [ "$ACTION" = "add_vlan" ]; then
+        VID=$(get_param "$POST" "vid" | tr -cd '0-9')
+        PORTS=""
+        for p in 0 1 2 3 4 5; do
+            VAL=$(get_param "$POST" "port_${p}")
+            TAG=$(get_param "$POST" "tag_${p}")
+            if [ "$VAL" = "1" ]; then
+                [ "$TAG" = "1" ] && PORTS="$PORTS ${p}t" || PORTS="$PORTS $p"
+            fi
+        done
+        PORTS=$(echo $PORTS | xargs)
+        if [ -n "$VID" ] && [ "$VID" -ge 1 ] && [ "$VID" -le 4094 ] && [ -n "$PORTS" ]; then
+            NAME="vlan_${VID}"
+            uci set network.${NAME}=switch_vlan
+            uci set network.${NAME}.device='switch0'
+            uci set network.${NAME}.vlan="$VID"
+            uci set network.${NAME}.ports="$PORTS"
+            uci commit network
+            /etc/init.d/network reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">VLAN dodany. Siec przeladowana.</div>'
+        else
+            MSG='<div class="flash-err">Podaj prawidlowy VLAN ID (1-4094) i co najmniej jeden port.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "del_vlan" ]; then
+        NAME=$(get_param "$POST" "name" | tr -cd 'a-zA-Z0-9_')
+        if [ -n "$NAME" ]; then
+            uci delete network.${NAME} 2>/dev/null
+            uci commit network
+            /etc/init.d/network reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">VLAN usuniety.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "save_bridge" ]; then
+        VIFACE=$(get_param "$POST" "viface" | tr -cd 'a-zA-Z0-9._-')
+        VID=$(get_param "$POST" "br_vid" | tr -cd '0-9')
+        BRIP=$(sanitize "$(get_param "$POST" "br_ip")")
+        if echo "$BRIP" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' && [ -n "$VID" ]; then
+            uci set network.${VIFACE}=interface
+            uci set network.${VIFACE}.type='bridge'
+            uci set network.${VIFACE}.ifname="eth0.${VID}"
+            uci set network.${VIFACE}.proto='static'
+            uci set network.${VIFACE}.ipaddr="$BRIP"
+            uci set network.${VIFACE}.netmask='255.255.255.0'
+            uci commit network
+            /etc/init.d/network reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">Interfejs VLAN zapisany.</div>'
+        else
+            MSG='<div class="flash-err">Nieprawidlowy IP lub VLAN ID.</div>'
+        fi
+    fi
+fi
+
+VLAN_ENABLED=$(uci get network.switch0.enable_vlan 2>/dev/null)
+SW_INFO=$(swconfig dev switch0 show 2>/dev/null || echo "(swconfig niedostepny w emulatorze)")
+VLANS=$(uci show network 2>/dev/null | grep "=switch_vlan" | cut -d. -f2 | cut -d= -f1)
+
+html_head "VLAN" "vlan"
+echo "$MSG"
+
+# --- Status switcha ---
+cat << HTML
+<div class="g2">
+  <div class="card">
+    <div class="sec">Switch switch0 (AR8229)</div>
+    <table>
+      <tbody>
+        <tr><th>VLAN</th><td>$([ "$VLAN_ENABLED" = "1" ] && echo '<span class="badge bg">wlaczony</span>' || echo '<span class="badge br">wylaczony</span>')</td></tr>
+        <tr><th>Porty</th><td>0=CPU &nbsp;1=LAN4 &nbsp;2=LAN3 &nbsp;3=LAN2 &nbsp;4=LAN1 &nbsp;5=WAN</td></tr>
+        <tr><th>Oznaczenia</th><td><code>Nt</code> = tagged &nbsp; <code>N</code> = untagged</td></tr>
+      </tbody>
+    </table>
+    $([ "$VLAN_ENABLED" != "1" ] && cat << 'FORM'
+    <form method="post" style="margin-top:.8rem">
+    <input type="hidden" name="action" value="enable_vlan">
+    <button type="submit" class="sm">Wlacz VLAN na switch0</button>
+    </form>
+FORM
+)
+  </div>
+
+  <div class="card">
+    <div class="sec">Mapa portow</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.4rem;text-align:center;margin-bottom:.6rem">
+      <div style="background:var(--pico-muted-border-color);border-radius:4px;padding:.4rem .2rem;font-size:.75rem">CPU<br><small>0</small></div>
+      <div style="background:#1b2e3a;border-radius:4px;padding:.4rem .2rem;font-size:.75rem;color:#2196f3">LAN1<br><small>4</small></div>
+      <div style="background:#1b2e3a;border-radius:4px;padding:.4rem .2rem;font-size:.75rem;color:#2196f3">LAN2<br><small>3</small></div>
+      <div style="background:#1b2e3a;border-radius:4px;padding:.4rem .2rem;font-size:.75rem;color:#2196f3">LAN3<br><small>2</small></div>
+      <div style="background:#1b2e3a;border-radius:4px;padding:.4rem .2rem;font-size:.75rem;color:#2196f3">LAN4<br><small>1</small></div>
+      <div style="background:#1b3a1f;border-radius:4px;padding:.4rem .2rem;font-size:.75rem;color:#4caf50">WAN<br><small>5</small></div>
+    </div>
+    <p class="hint" style="margin:0">Porty LAN1-4 sa ponumerowane odwrotnie w swconfig (fizyczny LAN1 = port 4).</p>
+  </div>
+</div>
+HTML
+
+# --- Aktualne VLANy z UCI ---
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">Konfiguracja VLAN (UCI)</div>'
+if [ -n "$VLANS" ]; then
+    echo '<table><thead><tr><th>Nazwa UCI</th><th>VLAN ID</th><th>Porty</th><th>Domyslna rola</th><th></th></tr></thead><tbody>'
+    for name in $VLANS; do
+        vid=$(uci get network.${name}.vlan 2>/dev/null)
+        ports=$(uci get network.${name}.ports 2>/dev/null)
+        case "$vid" in
+            1) role="LAN (untagged)" ;;
+            2) role="WAN (untagged)" ;;
+            *) role="custom" ;;
+        esac
+        printf '<tr><td><code>%s</code></td><td><strong>%s</strong></td><td><code>%s</code></td><td>%s</td><td>' \
+            "$name" "$vid" "$ports" "$role"
+        printf '<form method="post" style="margin:0">'
+        printf '<input type="hidden" name="action" value="del_vlan">'
+        printf '<input type="hidden" name="name" value="%s">' "$name"
+        printf '<button type="submit" class="sm danger">Usun</button></form></td></tr>\n'
+    done
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">Brak VLAN-ow w UCI. Dodaj pierwszy ponizej.</p>'
+fi
+echo '</div>'
+
+# --- Dodaj VLAN ---
+cat << 'HTML'
+<div class="card" style="margin-bottom:1.5rem">
+  <div class="sec">Dodaj VLAN</div>
+  <form method="post">
+  <input type="hidden" name="action" value="add_vlan">
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+    <div><label>VLAN ID</label><input type="number" name="vid" min="1" max="4094" placeholder="10" style="width:100px"></div>
+  </div>
+  <div class="sec" style="margin-bottom:.6rem">Porty</div>
+  <table style="margin-bottom:1rem">
+    <thead><tr><th>Port</th><th>Fizyczny</th><th>Dolacz</th><th>Tagged (trunk)</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>CPU (wewn.)</td>
+        <td><input type="hidden" name="port_0" value="0"><input type="checkbox" name="port_0" value="1" checked></td>
+        <td><input type="checkbox" name="tag_0" value="1" checked></td></tr>
+      <tr><td>1</td><td>LAN4</td>
+        <td><input type="checkbox" name="port_1" value="1"></td>
+        <td><input type="checkbox" name="tag_1" value="1"></td></tr>
+      <tr><td>2</td><td>LAN3</td>
+        <td><input type="checkbox" name="port_2" value="1"></td>
+        <td><input type="checkbox" name="tag_2" value="1"></td></tr>
+      <tr><td>3</td><td>LAN2</td>
+        <td><input type="checkbox" name="port_3" value="1"></td>
+        <td><input type="checkbox" name="tag_3" value="1"></td></tr>
+      <tr><td>4</td><td>LAN1</td>
+        <td><input type="checkbox" name="port_4" value="1"></td>
+        <td><input type="checkbox" name="tag_4" value="1"></td></tr>
+      <tr><td>5</td><td>WAN</td>
+        <td><input type="checkbox" name="port_5" value="1"></td>
+        <td><input type="checkbox" name="tag_5" value="1"></td></tr>
+    </tbody>
+  </table>
+  <button type="submit" class="sm">Dodaj VLAN</button>
+  </form>
+</div>
+HTML
+
+# --- Interfejs na VLANie ---
+cat << 'HTML'
+<div class="card" style="margin-bottom:1.5rem">
+  <div class="sec">Interfejs sieciowy na VLANie</div>
+  <p class="hint">Zeby VLAN mial swoje IP (np. osobna podsiec), stworz interfejs na <code>eth0.VID</code>.</p>
+  <form method="post">
+  <input type="hidden" name="action" value="save_bridge">
+  <div class="row3">
+    <div><label>Nazwa interfejsu UCI</label><input type="text" name="viface" placeholder="vlan10"></div>
+    <div><label>VLAN ID</label><input type="number" name="br_vid" min="1" max="4094" placeholder="10" style="width:90px"></div>
+    <div>
+      <label>Adres IP (np. 192.168.10.1)</label>
+      <div style="display:flex;gap:.4rem;align-items:flex-end">
+        <input type="text" name="br_ip" placeholder="192.168.10.1">
+        <button type="submit" class="sm">Zapisz</button>
+      </div>
+    </div>
+  </div>
+  <p class="hint">Maska /24 ustawiana automatycznie. DHCP dla nowego subnetu skonfiguruj recznie przez SSH.</p>
+  </form>
+</div>
+HTML
+
+# --- swconfig raw output ---
+echo '<div class="card">'
+echo '<div class="sec">swconfig dev switch0 show</div>'
+echo '<pre>'
+echo "$SW_INFO" | sed 's/</\&lt;/g; s/>/\&gt;/g'
+echo '</pre></div>'
+
+html_foot
