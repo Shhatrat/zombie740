@@ -39,19 +39,20 @@ Custom **OpenWrt 24.10** firmware for the **TP-Link TL-WR740N v4** — a 2011 ro
 
 ## Variants
 
-Five variants fit in 4MB flash. Pick one based on your use case.
+Six variants fit in 4MB flash. Pick one based on your use case.
 
 | Variant | Size | Use case |
 |---|---|---|
 | 🟢 **BRIDGE** | ~2.5 MB | Dumb switch / L2 bridge. All ports in one segment, no routing, no DHCP. Just SSH management. |
 | 🟡 **MINI** | ~3.0 MB | Second router behind your main router. DHCP+DNS on LAN, no firewall (not for WAN exposure). |
 | 🔴 **SECURE** | ~3.5 MB | Edge router. Full firewall, DROP WAN, NAT/masquerade, DHCP+DNS, SSH LAN-only. |
-| 🌐 **SECURE-WEB** | ~3.8 MB | Like SECURE + shell CGI web panel at `http://192.168.1.1` (status, network, DHCP, firewall, diag, system). |
+| 🌐 **SECURE-WEB** | ~3.8 MB | Like SECURE + shell CGI web panel in Polish at `http://192.168.1.1`. |
+| 🌐 **SECURE-WEB-EN** | ~3.8 MB | Like SECURE-WEB but with English web panel. |
 | 🔵 **VPN** | ~3.7 MB | VPN gateway. Like SECURE but routes LAN traffic through a WireGuard tunnel. |
 
 ### Package comparison
 
-| Package | BRIDGE | MINI | SECURE | SECURE-WEB | VPN |
+| Package | BRIDGE | MINI | SECURE | SECURE-WEB(-EN) | VPN |
 |---|:---:|:---:|:---:|:---:|:---:|
 | dropbear (SSH) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | dnsmasq (DHCP+DNS) | — | ✅ | ✅ | ✅ | ✅ |
@@ -90,7 +91,7 @@ Five variants fit in 4MB flash. Pick one based on your use case.
 
 ### SECURE-WEB panel
 
-The SECURE-WEB variant adds a lightweight web panel (uhttpd + shell CGI + PicoCSS dark theme) served at `http://192.168.1.1`.
+The SECURE-WEB and SECURE-WEB-EN variants add a lightweight web panel (uhttpd + shell CGI + PicoCSS dark theme) served at `http://192.168.1.1`. SECURE-WEB is in Polish, SECURE-WEB-EN in English — identical functionality.
 
 | Page | URL | Description |
 |---|---|---|
@@ -98,8 +99,9 @@ The SECURE-WEB variant adds a lightweight web panel (uhttpd + shell CGI + PicoCS
 | Network | `/cgi-bin/network` | LAN/WAN config (DHCP/static/PPPoE), interface list |
 | DHCP/DNS | `/cgi-bin/dhcp` | Pool, lease time, DNS servers, static assignments |
 | Firewall | `/cgi-bin/firewall` | nft ruleset view, start/stop, add/delete UCI rules |
-| Diagnostics | `/cgi-bin/diag` | Ping, traceroute, DNS lookup, routing table |
-| System | `/cgi-bin/system` | Hostname, password, NTP sync, reboot, sysupgrade |
+| VLAN | `/cgi-bin/vlan` | Switch VLAN config (AR8229), port map, add/delete VLANs, bridge interfaces |
+| Diagnostics | `/cgi-bin/diag` | Ping, traceroute, DNS lookup, routing table, active connections |
+| System | `/cgi-bin/system` | Hostname, password, NTP sync, reboot, sysupgrade flash |
 
 **Default login:** `admin` / `admin` (Digest auth — change immediately)
 
