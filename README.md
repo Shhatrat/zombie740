@@ -1,3 +1,5 @@
+![I'm tired boss](docs/tired.jpg)
+
 ```
   ______  ___  __  __ ____ ___ _____  ____  _  _  ___
  |___  / / _ \|  \/  | __ )_ _| ____||__  || || |/ _ \
@@ -390,7 +392,5 @@ Build scripts and configs: MIT
 OpenWrt: GPL-2.0 — see [openwrt.org](https://openwrt.org)
 
 ---
-
-![I'm tired boss](docs/tired.jpg)
 
 > *— TL-WR740N v4, 2011–∞ · 400 MHz · 32 MB RAM · 4 MB flash · still routing your packets*
