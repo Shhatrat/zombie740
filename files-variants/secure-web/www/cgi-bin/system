@@ -31,7 +31,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         elif [ ${#P1} -lt 6 ]; then
             MSG='<div class="flash-err">Haslo musi miec co najmniej 6 znakow.</div>'
         else
-            echo "root:$P1" | chpasswd 2>/dev/null
+            echo "root:$P1" | chpasswd >/dev/null 2>&1
             MSG='<div class="flash-ok">Haslo zmienione.</div>'
         fi
     fi

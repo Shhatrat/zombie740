@@ -101,5 +101,5 @@ get_param() {
 }
 
 sanitize() {
-    echo "$1" | tr -cd 'a-zA-Z0-9._:/- '
+    echo "$1" | tr -cd 'a-zA-Z0-9._:/ -'
 }
