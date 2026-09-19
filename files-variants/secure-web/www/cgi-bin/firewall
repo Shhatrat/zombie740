@@ -1,0 +1,145 @@
+#!/bin/sh
+. /www/cgi-bin/common.sh
+
+MSG=""
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    POST=$(parse_post)
+    ACTION=$(get_param "$POST" "action")
+
+    if [ "$ACTION" = "toggle" ]; then
+        if nft list ruleset 2>/dev/null | grep -q "table"; then
+            /etc/init.d/firewall stop >/dev/null 2>&1
+            MSG='<div class="flash-ok">Firewall zatrzymany.</div>'
+        else
+            /etc/init.d/firewall start >/dev/null 2>&1
+            MSG='<div class="flash-ok">Firewall uruchomiony.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "add_rule" ]; then
+        R_NAME=$(sanitize "$(get_param "$POST" "r_name")")
+        R_SRC=$(get_param "$POST" "r_src")
+        R_DEST=$(get_param "$POST" "r_dest")
+        R_PROTO=$(get_param "$POST" "r_proto")
+        R_PORT=$(get_param "$POST" "r_port" | tr -cd '0-9')
+        R_TARGET=$(get_param "$POST" "r_target")
+        case "$R_SRC" in wan|lan|*) ;; esac
+        case "$R_TARGET" in ACCEPT|DROP|REJECT) ;; *) R_TARGET="DROP" ;; esac
+        case "$R_PROTO" in tcp|udp|any) ;; *) R_PROTO="tcp" ;; esac
+        NAME="rule_$(date +%s)"
+        uci set firewall.${NAME}=rule
+        uci set firewall.${NAME}.name="$R_NAME"
+        uci set firewall.${NAME}.src="$R_SRC"
+        uci set firewall.${NAME}.dest="$R_DEST"
+        [ "$R_PROTO" != "any" ] && uci set firewall.${NAME}.proto="$R_PROTO"
+        [ -n "$R_PORT" ] && uci set firewall.${NAME}.dest_port="$R_PORT"
+        uci set firewall.${NAME}.target="$R_TARGET"
+        uci commit firewall
+        /etc/init.d/firewall reload >/dev/null 2>&1
+        MSG='<div class="flash-ok">Regula dodana.</div>'
+    fi
+
+    if [ "$ACTION" = "del_rule" ]; then
+        DEL=$(get_param "$POST" "name" | tr -cd 'a-zA-Z0-9_')
+        [ -n "$DEL" ] && uci delete firewall.${DEL} 2>/dev/null && uci commit firewall
+        /etc/init.d/firewall reload >/dev/null 2>&1
+        MSG='<div class="flash-ok">Regula usunieta.</div>'
+    fi
+fi
+
+FW_ACTIVE=$(nft list ruleset 2>/dev/null | grep -c "table")
+[ "$FW_ACTIVE" -gt 0 ] && FW_BADGE='<span class="badge bg">&#9679; ACTIVE</span>' || FW_BADGE='<span class="badge br">&#9679; OFF</span>'
+
+html_head "Firewall" "firewall"
+
+echo "$MSG"
+
+cat << HTML
+<div class="card" style="margin-bottom:1.5rem">
+  <div class="sec">Status firewall</div>
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+    <div style="font-size:1.1rem">$FW_BADGE</div>
+    <form method="post" style="margin:0">
+    <input type="hidden" name="action" value="toggle">
+    <button type="submit" class="sm$([ "$FW_ACTIVE" -gt 0 ] && echo ' danger')">
+      $([ "$FW_ACTIVE" -gt 0 ] && echo 'Zatrzymaj firewall' || echo 'Uruchom firewall')
+    </button>
+    </form>
+  </div>
+</div>
+HTML
+
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">Reguly nftables</div>'
+echo '<pre>'
+nft list ruleset 2>/dev/null | sed 's/</\&lt;/g; s/>/\&gt;/g' || echo '(brak regul)'
+echo '</pre></div>'
+
+RULES=$(uci show firewall 2>/dev/null | grep "=rule" | cut -d= -f1 | cut -d. -f2)
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">Reguly UCI</div>'
+if [ -n "$RULES" ]; then
+    echo '<table><thead><tr><th>Nazwa</th><th>Src</th><th>Dest</th><th>Proto</th><th>Port</th><th>Akcja</th><th></th></tr></thead><tbody>'
+    for r in $RULES; do
+        r_name=$(uci get firewall.${r}.name 2>/dev/null)
+        r_src=$(uci get firewall.${r}.src 2>/dev/null)
+        r_dest=$(uci get firewall.${r}.dest 2>/dev/null)
+        r_proto=$(uci get firewall.${r}.proto 2>/dev/null)
+        r_port=$(uci get firewall.${r}.dest_port 2>/dev/null)
+        r_target=$(uci get firewall.${r}.target 2>/dev/null)
+        printf '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>' \
+            "${r_name:-—}" "${r_src:-*}" "${r_dest:-*}" "${r_proto:-any}" "${r_port:-*}" "${r_target:-?}"
+        printf '<form method="post" style="margin:0">'
+        printf '<input type="hidden" name="action" value="del_rule">'
+        printf '<input type="hidden" name="name" value="%s">' "$r"
+        printf '<button type="submit" class="sm danger">X</button></form></td></tr>\n'
+    done
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">Brak regul UCI.</p>'
+fi
+echo '</div>'
+
+cat << 'HTML'
+<div class="card">
+  <div class="sec">Dodaj regule</div>
+  <form method="post">
+  <input type="hidden" name="action" value="add_rule">
+  <div class="row4">
+    <div><label>Nazwa</label><input type="text" name="r_name" placeholder="Allow-SSH-WAN"></div>
+    <div><label>Zrodlo</label>
+      <select name="r_src">
+        <option value="wan">WAN</option><option value="lan">LAN</option>
+      </select>
+    </div>
+    <div><label>Cel (zone)</label>
+      <select name="r_dest">
+        <option value="">router (input)</option>
+        <option value="lan">LAN</option>
+        <option value="wan">WAN</option>
+      </select>
+    </div>
+    <div><label>&nbsp;</label><button type="submit" class="sm">Dodaj</button></div>
+  </div>
+  <div class="row4">
+    <div><label>Protokol</label>
+      <select name="r_proto">
+        <option value="tcp">TCP</option><option value="udp">UDP</option><option value="any">Dowolny</option>
+      </select>
+    </div>
+    <div><label>Port docelowy</label><input type="number" name="r_port" placeholder="22" min="1" max="65535"></div>
+    <div><label>Akcja</label>
+      <select name="r_target">
+        <option value="ACCEPT">ACCEPT</option>
+        <option value="DROP">DROP</option>
+        <option value="REJECT">REJECT</option>
+      </select>
+    </div>
+    <div></div>
+  </div>
+  </form>
+</div>
+HTML
+
+html_foot

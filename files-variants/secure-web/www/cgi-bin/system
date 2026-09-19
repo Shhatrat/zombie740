@@ -1,0 +1,145 @@
+#!/bin/sh
+. /www/cgi-bin/common.sh
+
+MSG=""
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    POST=$(parse_post)
+    ACTION=$(get_param "$POST" "action")
+
+    if [ "$ACTION" = "hostname" ]; then
+        H=$(sanitize "$(get_param "$POST" "hostname")")
+        H=$(echo "$H" | tr -cd 'a-zA-Z0-9-')
+        if [ -n "$H" ] && [ ${#H} -le 63 ]; then
+            uci set system.@system[0].hostname="$H"
+            uci commit system
+            echo "$H" > /proc/sys/kernel/hostname
+            /etc/init.d/system reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">Hostname zmieniony.</div>'
+        else
+            MSG='<div class="flash-err">Nieprawidlowy hostname.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "passwd" ]; then
+        P1=$(get_param "$POST" "p1")
+        P2=$(get_param "$POST" "p2")
+        if [ -z "$P1" ]; then
+            MSG='<div class="flash-err">Haslo nie moze byc puste.</div>'
+        elif [ "$P1" != "$P2" ]; then
+            MSG='<div class="flash-err">Hasla nie sa zgodne.</div>'
+        elif [ ${#P1} -lt 6 ]; then
+            MSG='<div class="flash-err">Haslo musi miec co najmniej 6 znakow.</div>'
+        else
+            echo "root:$P1" | chpasswd 2>/dev/null
+            MSG='<div class="flash-ok">Haslo zmienione.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "reboot" ]; then
+        html_head "System" "system"
+        echo '<div class="flash-ok">Restart za 3 sekundy...</div>'
+        html_foot
+        ( sleep 3; reboot ) &
+        exit 0
+    fi
+
+    if [ "$ACTION" = "flash" ]; then
+        TMPFILE="/tmp/sysupgrade_upload.bin"
+        if [ -f "$TMPFILE" ]; then
+            html_head "System" "system"
+            echo '<div class="flash-ok">Flashowanie... router zrestartuje sie automatycznie.</div>'
+            html_foot
+            ( sleep 2; sysupgrade "$TMPFILE" ) &
+            exit 0
+        else
+            MSG='<div class="flash-err">Brak pliku. Uzyj scp do /tmp/sysupgrade_upload.bin</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "ntp" ]; then
+        /etc/init.d/sysntpd restart >/dev/null 2>&1
+        MSG='<div class="flash-ok">NTP zsynchronizowany.</div>'
+    fi
+fi
+
+HOSTNAME=$(uci get system.@system[0].hostname 2>/dev/null)
+TIMEZONE=$(uci get system.@system[0].timezone 2>/dev/null)
+OPENWRT=$(cat /etc/openwrt_release 2>/dev/null | grep DISTRIB_RELEASE | cut -d'"' -f2)
+KERNEL=$(uname -r)
+ARCH=$(uname -m)
+UPTIME=$(awk '{s=$1/86400; h=($1%86400)/3600; m=($1%3600)/60; printf "%dd %dh %dm", s, h, m}' /proc/uptime)
+FLASH_TOTAL=$(df /overlay 2>/dev/null | awk 'NR==2{print int($2/1024) " KB"}')
+FLASH_FREE=$(df /overlay 2>/dev/null | awk 'NR==2{print int($4/1024) " KB"}')
+DATE=$(date)
+
+html_head "System" "system"
+
+echo "$MSG"
+
+cat << HTML
+<div class="g2">
+  <div class="card">
+    <div class="sec">Informacje</div>
+    <table>
+      <tbody>
+        <tr><th>Hostname</th><td>$HOSTNAME</td></tr>
+        <tr><th>OpenWrt</th><td>${OPENWRT:-—}</td></tr>
+        <tr><th>Kernel</th><td>$KERNEL</td></tr>
+        <tr><th>Architektura</th><td>$ARCH</td></tr>
+        <tr><th>Uptime</th><td>$UPTIME</td></tr>
+        <tr><th>Data/czas</th><td>$DATE</td></tr>
+        <tr><th>Strefa czasowa</th><td>${TIMEZONE:-—}</td></tr>
+        <tr><th>Flash total</th><td>${FLASH_TOTAL:-—}</td></tr>
+        <tr><th>Flash wolne</th><td>${FLASH_FREE:-—}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="sec">Zmien hostname</div>
+    <form method="post">
+    <input type="hidden" name="action" value="hostname">
+    <label>Hostname</label>
+    <input type="text" name="hostname" value="${HOSTNAME:-OpenWrt}" required>
+    <button type="submit" class="sm" style="margin-top:.4rem">Zmien hostname</button>
+    </form>
+  </div>
+</div>
+
+<div class="g2">
+  <div class="card">
+    <div class="sec">Zmien haslo root</div>
+    <form method="post">
+    <input type="hidden" name="action" value="passwd">
+    <label>Nowe haslo</label>
+    <input type="password" name="p1" required>
+    <label>Powtorz haslo</label>
+    <input type="password" name="p2" required>
+    <button type="submit" class="sm" style="margin-top:.4rem">Zmien haslo</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="sec">Akcje systemowe</div>
+    <form method="post" style="margin-bottom:.6rem">
+    <input type="hidden" name="action" value="ntp">
+    <button type="submit" class="sm">Synchronizuj NTP</button>
+    </form>
+    <form method="post" style="margin-bottom:.6rem"
+          onsubmit="return confirm('Zrestartowac router?')">
+    <input type="hidden" name="action" value="reboot">
+    <button type="submit" class="sm danger">Restart routera</button>
+    </form>
+    <hr style="margin:.8rem 0">
+    <div class="sec" style="margin-bottom:.4rem">Aktualizacja firmware (sysupgrade)</div>
+    <p class="hint">Wgraj plik przez SSH: <code>scp zombie740-sysupgrade.bin root@192.168.1.1:/tmp/sysupgrade_upload.bin</code></p>
+    <form method="post" onsubmit="return confirm('Flashowac firmware? Router zrestartuje sie!')">
+    <input type="hidden" name="action" value="flash">
+    <button type="submit" class="sm danger">Flashuj /tmp/sysupgrade_upload.bin</button>
+    </form>
+  </div>
+</div>
+HTML
+
+html_foot

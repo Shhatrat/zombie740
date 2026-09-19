@@ -1,0 +1,173 @@
+#!/bin/sh
+. /www/cgi-bin/common.sh
+
+MSG=""
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    POST=$(parse_post)
+    ACTION=$(get_param "$POST" "action")
+
+    if [ "$ACTION" = "dhcp" ]; then
+        START=$(get_param "$POST" "start")
+        LIMIT=$(get_param "$POST" "limit")
+        LEASETIME=$(get_param "$POST" "leasetime")
+        START=$(echo "$START" | tr -cd '0-9')
+        LIMIT=$(echo "$LIMIT" | tr -cd '0-9')
+        LEASETIME=$(sanitize "$LEASETIME")
+        if [ -n "$START" ] && [ -n "$LIMIT" ]; then
+            uci set dhcp.lan.start="$START"
+            uci set dhcp.lan.limit="$LIMIT"
+            [ -n "$LEASETIME" ] && uci set dhcp.lan.leasetime="$LEASETIME"
+            uci commit dhcp
+            /etc/init.d/dnsmasq reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">Konfiguracja DHCP zapisana.</div>'
+        else
+            MSG='<div class="flash-err">Nieprawidlowe wartosci.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "dns" ]; then
+        DNS1=$(sanitize "$(get_param "$POST" "dns1")")
+        DNS2=$(sanitize "$(get_param "$POST" "dns2")")
+        uci delete dhcp.@dnsmasq[0].server 2>/dev/null
+        [ -n "$DNS1" ] && uci add_list dhcp.@dnsmasq[0].server="$DNS1"
+        [ -n "$DNS2" ] && uci add_list dhcp.@dnsmasq[0].server="$DNS2"
+        uci commit dhcp
+        /etc/init.d/dnsmasq reload >/dev/null 2>&1
+        MSG='<div class="flash-ok">Konfiguracja DNS zapisana.</div>'
+    fi
+
+    if [ "$ACTION" = "static" ]; then
+        S_IP=$(sanitize "$(get_param "$POST" "s_ip")")
+        S_MAC=$(get_param "$POST" "s_mac" | tr '[:upper:]' '[:lower:]' | tr -cd '0-9a-f:')
+        S_HOST=$(sanitize "$(get_param "$POST" "s_host")")
+        if echo "$S_IP" | grep -qE '^[0-9.]+$' && echo "$S_MAC" | grep -qE '^[0-9a-f:]+$'; then
+            NAME="host_$(echo $S_MAC | tr -d ':')"
+            uci set dhcp.${NAME}=host
+            uci set dhcp.${NAME}.mac="$S_MAC"
+            uci set dhcp.${NAME}.ip="$S_IP"
+            [ -n "$S_HOST" ] && uci set dhcp.${NAME}.name="$S_HOST"
+            uci commit dhcp
+            /etc/init.d/dnsmasq reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">Statyczna dzierzawa dodana.</div>'
+        else
+            MSG='<div class="flash-err">Nieprawidlowy IP lub MAC.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "del_static" ]; then
+        DEL_NAME=$(get_param "$POST" "name" | tr -cd 'a-zA-Z0-9_')
+        if [ -n "$DEL_NAME" ]; then
+            uci delete dhcp.${DEL_NAME} 2>/dev/null
+            uci commit dhcp
+            /etc/init.d/dnsmasq reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">Usunieto.</div>'
+        fi
+    fi
+fi
+
+DHCP_START=$(uci get dhcp.lan.start 2>/dev/null)
+DHCP_LIMIT=$(uci get dhcp.lan.limit 2>/dev/null)
+DHCP_LEASE=$(uci get dhcp.lan.leasetime 2>/dev/null)
+DNS_SERVERS=$(uci get dhcp.@dnsmasq[0].server 2>/dev/null | tr ' ' '\n' | head -2)
+DNS1=$(echo "$DNS_SERVERS" | sed -n '1p')
+DNS2=$(echo "$DNS_SERVERS" | sed -n '2p')
+LAN_BASE=$(uci get network.lan.ipaddr 2>/dev/null | awk -F. '{print $1"."$2"."$3}')
+
+html_head "DHCP/DNS" "dhcp"
+
+echo "$MSG"
+
+cat << HTML
+<div class="g2">
+  <div class="card">
+    <div class="sec">Serwer DHCP</div>
+    <form method="post">
+    <input type="hidden" name="action" value="dhcp">
+    <label>Poczatek puli (ostatni oktet, np. 100)</label>
+    <input type="number" name="start" value="${DHCP_START:-100}" min="1" max="254">
+    <label>Rozmiar puli</label>
+    <input type="number" name="limit" value="${DHCP_LIMIT:-50}" min="1" max="253">
+    <label>Czas dzierzawy</label>
+    <input type="text" name="leasetime" value="${DHCP_LEASE:-12h}" placeholder="12h">
+    <p class="hint">Aktualna pula: ${LAN_BASE}.${DHCP_START:-100} – ${LAN_BASE}.$(( ${DHCP_START:-100} + ${DHCP_LIMIT:-50} - 1 ))</p>
+    <button type="submit" class="sm" style="margin-top:.4rem">Zapisz DHCP</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="sec">Serwery DNS</div>
+    <form method="post">
+    <input type="hidden" name="action" value="dns">
+    <label>DNS 1</label>
+    <input type="text" name="dns1" value="${DNS1:-8.8.8.8}" placeholder="8.8.8.8">
+    <label>DNS 2</label>
+    <input type="text" name="dns2" value="${DNS2:-1.1.1.1}" placeholder="1.1.1.1">
+    <p class="hint">Klienci dostana te serwery DNS przez DHCP.</p>
+    <button type="submit" class="sm" style="margin-top:.4rem">Zapisz DNS</button>
+    </form>
+  </div>
+</div>
+HTML
+
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">Aktywne dzierzawy DHCP</div>'
+LEASES=$(cat /tmp/dhcp.leases 2>/dev/null)
+if [ -n "$LEASES" ]; then
+    echo '<table><thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Wygasa</th></tr></thead><tbody>'
+    echo "$LEASES" | while read -r expire mac ip host rest; do
+        NOW=$(date +%s)
+        LEFT=$(( expire - NOW ))
+        if [ "$LEFT" -gt 0 ]; then
+            H=$(( LEFT / 3600 )); M=$(( (LEFT % 3600) / 60 ))
+            TIME="${H}h ${M}m"
+        else
+            TIME="wygaslo"
+        fi
+        printf '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n' "$ip" "$mac" "${host:-?}" "$TIME"
+    done
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">Brak aktywnych dzierzaw.</p>'
+fi
+echo '</div>'
+
+cat << 'HTML'
+<div class="card" style="margin-bottom:1.5rem">
+  <div class="sec">Statyczne przypisania IP</div>
+  <form method="post" style="margin-bottom:1rem">
+  <input type="hidden" name="action" value="static">
+  <div class="row3">
+    <div><label>MAC adres</label><input type="text" name="s_mac" placeholder="aa:bb:cc:11:22:33"></div>
+    <div><label>Adres IP</label><input type="text" name="s_ip" placeholder="192.168.1.50"></div>
+    <div style="display:flex;flex-direction:column">
+      <label>Hostname</label>
+      <div style="display:flex;gap:.4rem;align-items:flex-end">
+        <input type="text" name="s_host" placeholder="opcjonalnie">
+        <button type="submit" class="sm">Dodaj</button>
+      </div>
+    </div>
+  </div>
+  </form>
+HTML
+
+STATIC_ENTRIES=$(uci show dhcp 2>/dev/null | grep "=host" | cut -d= -f1 | cut -d. -f2)
+if [ -n "$STATIC_ENTRIES" ]; then
+    echo '<table><thead><tr><th>MAC</th><th>IP</th><th>Hostname</th><th></th></tr></thead><tbody>'
+    for name in $STATIC_ENTRIES; do
+        s_mac=$(uci get dhcp.${name}.mac 2>/dev/null)
+        s_ip=$(uci get dhcp.${name}.ip 2>/dev/null)
+        s_host=$(uci get dhcp.${name}.name 2>/dev/null)
+        printf '<tr><td>%s</td><td>%s</td><td>%s</td><td>' "$s_mac" "$s_ip" "${s_host:-—}"
+        printf '<form method="post" style="margin:0">'
+        printf '<input type="hidden" name="action" value="del_static">'
+        printf '<input type="hidden" name="name" value="%s">' "$name"
+        printf '<button type="submit" class="sm danger">Usun</button></form></td></tr>\n'
+    done
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">Brak statycznych przypisowan.</p>'
+fi
+echo '</div>'
+
+html_foot

@@ -39,30 +39,32 @@ Custom **OpenWrt 24.10** firmware for the **TP-Link TL-WR740N v4** — a 2011 ro
 
 ## Variants
 
-Four variants fit in 4MB flash. Pick one based on your use case.
+Five variants fit in 4MB flash. Pick one based on your use case.
 
 | Variant | Size | Use case |
 |---|---|---|
 | 🟢 **BRIDGE** | ~2.5 MB | Dumb switch / L2 bridge. All ports in one segment, no routing, no DHCP. Just SSH management. |
 | 🟡 **MINI** | ~3.0 MB | Second router behind your main router. DHCP+DNS on LAN, no firewall (not for WAN exposure). |
-| 🔴 **SECURE** | 3.5 MB | Edge router. Full firewall, DROP WAN, NAT/masquerade, DHCP+DNS, SSH LAN-only. |
+| 🔴 **SECURE** | ~3.5 MB | Edge router. Full firewall, DROP WAN, NAT/masquerade, DHCP+DNS, SSH LAN-only. |
+| 🌐 **SECURE-WEB** | ~3.8 MB | Like SECURE + shell CGI web panel at `http://192.168.1.1` (status, network, DHCP, firewall, diag, system). |
 | 🔵 **VPN** | ~3.7 MB | VPN gateway. Like SECURE but routes LAN traffic through a WireGuard tunnel. |
 
 ### Package comparison
 
-| Package | BRIDGE | MINI | SECURE | VPN |
-|---|:---:|:---:|:---:|:---:|
-| dropbear (SSH) | ✅ | ✅ | ✅ | ✅ |
-| dnsmasq (DHCP+DNS) | — | ✅ | ✅ | ✅ |
-| firewall4 | — | — | ✅ | ✅ |
-| nftables | — | — | ✅ | ✅ |
-| kmod-wireguard | — | — | — | ✅ |
-| wireguard-tools | — | — | — | ✅ |
-| swconfig (VLAN) | ✅ | ✅ | ✅ | ✅ |
-| netifd | ✅ | ✅ | ✅ | ✅ |
-| mtd (flash tool) | ✅ | ✅ | ✅ | ✅ |
-| LuCI (web UI) | ❌ | ❌ | ❌ | ❌ |
-| WiFi (ath9k) | ❌ | ❌ | ❌ | ❌ |
+| Package | BRIDGE | MINI | SECURE | SECURE-WEB | VPN |
+|---|:---:|:---:|:---:|:---:|:---:|
+| dropbear (SSH) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| dnsmasq (DHCP+DNS) | — | ✅ | ✅ | ✅ | ✅ |
+| firewall4 | — | — | ✅ | ✅ | ✅ |
+| nftables | — | — | ✅ | ✅ | ✅ |
+| uhttpd (web server) | — | — | — | ✅ | — |
+| kmod-wireguard | — | — | — | — | ✅ |
+| wireguard-tools | — | — | — | — | ✅ |
+| swconfig (VLAN) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| netifd | ✅ | ✅ | ✅ | ✅ | ✅ |
+| mtd (flash tool) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| LuCI (web UI) | ❌ | ❌ | ❌ | ❌ | ❌ |
+| WiFi (ath9k) | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### What's baked in (all variants)
 
@@ -85,6 +87,30 @@ Four variants fit in 4MB flash. Pick one based on your use case.
 | WAN → LAN | ❌ DROP |
 | LAN → router (SSH) | ✅ ACCEPT |
 | SYN flood protection | ✅ enabled |
+
+### SECURE-WEB panel
+
+The SECURE-WEB variant adds a lightweight web panel (uhttpd + shell CGI + PicoCSS dark theme) served at `http://192.168.1.1`.
+
+| Page | URL | Description |
+|---|---|---|
+| Status | `/cgi-bin/status` | Uptime, RAM, load, firewall state, DHCP leases, system logs |
+| Network | `/cgi-bin/network` | LAN/WAN config (DHCP/static/PPPoE), interface list |
+| DHCP/DNS | `/cgi-bin/dhcp` | Pool, lease time, DNS servers, static assignments |
+| Firewall | `/cgi-bin/firewall` | nft ruleset view, start/stop, add/delete UCI rules |
+| Diagnostics | `/cgi-bin/diag` | Ping, traceroute, DNS lookup, routing table |
+| System | `/cgi-bin/system` | Hostname, password, NTP sync, reboot, sysupgrade |
+
+**Default login:** `admin` / `admin` (Digest auth — change immediately)
+
+To change the password on the router:
+```bash
+# On the router via SSH
+python3 -c "import hashlib; h=hashlib.md5(b'admin:ZOMBIE740:newpassword').hexdigest(); print(f'admin:ZOMBIE740:{h}')" > /etc/uhttpd.auth
+/etc/init.d/uhttpd reload
+```
+
+> No HTTPS — web panel is only accessible from LAN (firewall blocks WAN access).
 
 ---
 
@@ -236,11 +262,13 @@ zombie740/
 ├── build-bridge.sh
 ├── build-mini.sh
 ├── build-secure.sh
+├── build-secure-web.sh
 ├── build-vpn.sh
 ├── configs/
 │   ├── bridge.config         ← OpenWrt .config per variant
 │   ├── mini.config
 │   ├── secure.config
+│   ├── secure-web.config     ← secure + uhttpd
 │   └── vpn.config
 ├── files-common/             ← baked into every variant
 │   └── etc/
@@ -255,6 +283,21 @@ zombie740/
     ├── secure/etc/config/
     │   ├── network
     │   └── firewall
+    ├── secure-web/           ← SECURE + web panel
+    │   ├── etc/
+    │   │   ├── config/uhttpd
+    │   │   └── uhttpd.auth   ← Digest auth (admin:admin — change this)
+    │   └── www/
+    │       ├── pico.min.css
+    │       └── cgi-bin/
+    │           ├── common.sh ← shared functions
+    │           ├── status    ← /cgi-bin/status
+    │           ├── network   ← /cgi-bin/network
+    │           ├── dhcp      ← /cgi-bin/dhcp
+    │           ├── firewall  ← /cgi-bin/firewall
+    │           ├── diag      ← /cgi-bin/diag
+    │           ├── system    ← /cgi-bin/system
+    │           └── logout    ← forces 401 re-auth
     └── vpn/etc/config/
         ├── network           ← WireGuard interface template
         └── firewall
