@@ -391,13 +391,6 @@ OpenWrt: GPL-2.0 — see [openwrt.org](https://openwrt.org)
 
 ---
 
-```
-I'm tired, boss.
-Mostly I'm tired of people being ugly to each other.
-I'm tired of all the pain I feel and hear in the world every day.
-There's too much of it.
+![I'm tired boss](docs/tired.jpg)
 
-    — TL-WR740N v4, 2011–∞
-       400 MHz · 32 MB RAM · 4 MB flash
-       still routing your packets
-```
+> *— TL-WR740N v4, 2011–∞ · 400 MHz · 32 MB RAM · 4 MB flash · still routing your packets*

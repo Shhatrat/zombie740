@@ -16,7 +16,6 @@ build-banner.log
 
 # Internal tools
 .superpowers/
-docs/
 STATUS.md
 WNIOSKI.md
 test_script.sh
