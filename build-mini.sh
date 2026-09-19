@@ -28,18 +28,28 @@ chown -R "$(stat -c '%u:%g' "$OPENWRT_DIR")" "$OPENWRT_DIR/tmp" 2>/dev/null || t
 echo "Starting build at $(date)"
 FORCE_UNSAFE_CONFIGURE=1 make -j$(nproc) 2>&1 | tee "$LOG"
 
-SYSUPGRADE=$(find "$OPENWRT_DIR/bin/targets/ath79/tiny/" -name "*sysupgrade.bin" 2>/dev/null | head -1)
-FACTORY=$(find "$OPENWRT_DIR/bin/targets/ath79/tiny/" -name "*factory.bin" 2>/dev/null | head -1)
+BINDIR="$OPENWRT_DIR/bin/targets/ath79/tiny"
+DATESTAMP=$(date +%Y%m%d)
 
-if [ -z "$SYSUPGRADE" ]; then
-    echo "ERROR: sysupgrade.bin not found!" >&2
+SYS_V4=$(find "$BINDIR" -name "*wr740n-v4*sysupgrade.bin" 2>/dev/null | head -1)
+FAC_V4=$(find "$BINDIR" -name "*wr740n-v4*factory.bin" 2>/dev/null | head -1)
+SYS_V5=$(find "$BINDIR" -name "*wr740n-v5*sysupgrade.bin" 2>/dev/null | head -1)
+FAC_V5=$(find "$BINDIR" -name "*wr740n-v5*factory.bin" 2>/dev/null | head -1)
+
+if [ -z "$SYS_V4" ]; then
+    echo "ERROR: v4 sysupgrade.bin not found!" >&2
     exit 1
 fi
 
-SIZE=$(du -sh "$SYSUPGRADE" | cut -f1)
-echo "=== SUCCESS: sysupgrade.bin $SIZE ==="
+echo "=== SUCCESS ==="
+cp "$SYS_V4" "$OUTPUT_DIR/zombie740-${VARIANT}-sysupgrade-${DATESTAMP}.bin"
+[ -n "$FAC_V4" ] && cp "$FAC_V4" "$OUTPUT_DIR/zombie740-${VARIANT}-factory-${DATESTAMP}.bin"
+echo "v4: $(du -sh "$SYS_V4" | cut -f1)"
 
-DATESTAMP=$(date +%Y%m%d)
-cp "$SYSUPGRADE" "$OUTPUT_DIR/zombie740-${VARIANT}-sysupgrade-${DATESTAMP}.bin"
-[ -n "$FACTORY" ] && cp "$FACTORY" "$OUTPUT_DIR/zombie740-${VARIANT}-factory-${DATESTAMP}.bin"
+if [ -n "$SYS_V5" ]; then
+    cp "$SYS_V5" "$OUTPUT_DIR/zombie740-${VARIANT}-v5-sysupgrade-${DATESTAMP}.bin"
+    [ -n "$FAC_V5" ] && cp "$FAC_V5" "$OUTPUT_DIR/zombie740-${VARIANT}-v5-factory-${DATESTAMP}.bin"
+    echo "v5: $(du -sh "$SYS_V5" | cut -f1)"
+fi
+
 echo "Saved to: $OUTPUT_DIR/zombie740-${VARIANT}-*-${DATESTAMP}.bin"
