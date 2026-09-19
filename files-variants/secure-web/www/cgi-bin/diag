@@ -3,23 +3,24 @@
 
 OUTPUT=""
 TOOL=""
+TARGET_VAL=""
 
 if [ "$REQUEST_METHOD" = "POST" ]; then
     POST=$(parse_post)
     TOOL=$(get_param "$POST" "tool")
-    TARGET=$(sanitize "$(get_param "$POST" "target")")
-    TARGET=$(echo "$TARGET" | tr -cd 'a-zA-Z0-9._:-')
+    TARGET_VAL=$(sanitize "$(get_param "$POST" "target")")
+    TARGET_VAL=$(echo "$TARGET_VAL" | tr -cd 'a-zA-Z0-9._:-')
 
-    if [ -n "$TARGET" ]; then
+    if [ -n "$TARGET_VAL" ]; then
         case "$TOOL" in
             ping)
-                OUTPUT=$(ping -c 4 -W 2 "$TARGET" 2>&1)
+                OUTPUT=$(ping -c 4 -W 2 "$TARGET_VAL" 2>&1)
                 ;;
             traceroute)
-                OUTPUT=$(traceroute -n -w 2 -m 15 "$TARGET" 2>&1)
+                OUTPUT=$(traceroute -n -w 2 -m 15 "$TARGET_VAL" 2>&1)
                 ;;
             nslookup)
-                OUTPUT=$(nslookup "$TARGET" 2>&1)
+                OUTPUT=$(nslookup "$TARGET_VAL" 2>&1)
                 ;;
             *)
                 OUTPUT="Nieznane narzedzie."
@@ -29,6 +30,15 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 fi
 
 html_head "Diagnostyka" "diag"
+
+if [ -n "$OUTPUT" ]; then
+    echo '<div class="card" id="wynik" style="margin-bottom:1.5rem">'
+    echo "<div class=\"sec\">Wynik: $TOOL $TARGET_VAL</div>"
+    echo '<pre>'
+    echo "$OUTPUT" | sed 's/</\&lt;/g; s/>/\&gt;/g'
+    echo '</pre></div>'
+    echo '<script>document.getElementById("wynik").scrollIntoView({behavior:"smooth"});</script>'
+fi
 
 cat << 'HTML'
 <div class="g2">
@@ -65,14 +75,6 @@ cat << 'HTML'
   </form>
 </div>
 HTML
-
-if [ -n "$OUTPUT" ]; then
-    echo '<div class="card">'
-    echo "<div class=\"sec\">Wynik: $TOOL</div>"
-    echo '<pre>'
-    echo "$OUTPUT" | sed 's/</\&lt;/g; s/>/\&gt;/g'
-    echo '</pre></div>'
-fi
 
 echo '<div class="card">'
 echo '<div class="sec">Tabela routingu</div>'
