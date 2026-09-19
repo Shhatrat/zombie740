@@ -106,7 +106,7 @@ The SECURE-WEB variant adds a lightweight web panel (uhttpd + shell CGI + PicoCS
 To change the password on the router:
 ```bash
 # On the router via SSH
-python3 -c "import hashlib; h=hashlib.md5(b'admin:ZOMBIE740:newpassword').hexdigest(); print(f'admin:ZOMBIE740:{h}')" > /etc/uhttpd.auth
+echo "admin:ZOMBIE740:$(echo -n 'admin:ZOMBIE740:newpassword' | md5sum | cut -c1-32)" > /etc/uhttpd.auth
 /etc/init.d/uhttpd reload
 ```
 
