@@ -1,0 +1,117 @@
+#!/bin/sh
+. /www/cgi-bin/common.sh
+
+MSG=""
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    POST=$(parse_post)
+    ACTION=$(get_param "$POST" "action")
+
+    if [ "$ACTION" = "add" ]; then
+        NAME=$(get_param "$POST" "name" | tr -cd 'a-zA-Z0-9_')
+        PROTO=$(get_param "$POST" "proto")
+        case "$PROTO" in tcp|udp|tcpudp) ;; *) PROTO="tcp" ;; esac
+        EXTPORT=$(get_param "$POST" "extport" | tr -cd '0-9')
+        DESTIP=$(sanitize "$(get_param "$POST" "destip")")
+        DESTPORT=$(get_param "$POST" "destport" | tr -cd '0-9')
+        if [ -n "$NAME" ] && [ -n "$EXTPORT" ] && \
+           echo "$DESTIP" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' && \
+           [ -n "$DESTPORT" ]; then
+            uci set firewall.${NAME}=redirect
+            uci set firewall.${NAME}.name="$NAME"
+            uci set firewall.${NAME}.src='wan'
+            uci set firewall.${NAME}.dest='lan'
+            uci set firewall.${NAME}.proto="$PROTO"
+            uci set firewall.${NAME}.src_dport="$EXTPORT"
+            uci set firewall.${NAME}.dest_ip="$DESTIP"
+            uci set firewall.${NAME}.dest_port="$DESTPORT"
+            uci set firewall.${NAME}.target='DNAT'
+            uci commit firewall
+            /etc/init.d/firewall reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">Rule added.</div>'
+        else
+            MSG='<div class="flash-err">Invalid data. Check IP and ports.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "del" ]; then
+        NAME=$(get_param "$POST" "name" | tr -cd 'a-zA-Z0-9_')
+        if [ -n "$NAME" ]; then
+            uci delete firewall.${NAME} 2>/dev/null
+            uci commit firewall
+            /etc/init.d/firewall reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">Rule deleted.</div>'
+        fi
+    fi
+fi
+
+html_head "Port Forwarding" "portfw"
+echo "$MSG"
+
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">Current rules (DNAT)</div>'
+
+RULES=$(uci show firewall 2>/dev/null | grep "=redirect" | cut -d. -f2 | cut -d= -f1)
+if [ -n "$RULES" ]; then
+    echo '<table><thead><tr><th>Name</th><th>Proto</th><th>Ext Port</th><th>Dest IP</th><th>Dest Port</th><th></th></tr></thead><tbody>'
+    for r in $RULES; do
+        name=$(uci get firewall.${r}.name 2>/dev/null || echo "$r")
+        proto=$(uci get firewall.${r}.proto 2>/dev/null)
+        extport=$(uci get firewall.${r}.src_dport 2>/dev/null)
+        destip=$(uci get firewall.${r}.dest_ip 2>/dev/null)
+        destport=$(uci get firewall.${r}.dest_port 2>/dev/null)
+        printf '<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>' \
+            "$name" "$proto" "$extport" "$destip" "$destport"
+        printf '<form method="post" style="margin:0">'
+        printf '<input type="hidden" name="action" value="del">'
+        printf '<input type="hidden" name="name" value="%s">' "$r"
+        printf '<button type="submit" class="sm danger">Delete</button></form></td></tr>\n'
+    done
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">No port forwarding rules.</p>'
+fi
+echo '</div>'
+
+cat << 'HTML'
+<div class="card">
+  <div class="sec">Add port forwarding rule</div>
+  <p class="hint">WAN:ExtPort → LAN:DestIP:DestPort</p>
+  <form method="post">
+  <input type="hidden" name="action" value="add">
+  <div class="g2" style="margin-bottom:.6rem">
+    <div>
+      <label>Rule name (unique, no spaces)</label>
+      <input type="text" name="name" placeholder="ssh_server" required>
+    </div>
+    <div>
+      <label>Protocol</label>
+      <select name="proto">
+        <option value="tcp">TCP</option>
+        <option value="udp">UDP</option>
+        <option value="tcpudp">TCP+UDP</option>
+      </select>
+    </div>
+  </div>
+  <div class="g2" style="margin-bottom:.6rem">
+    <div>
+      <label>External port (WAN)</label>
+      <input type="number" name="extport" min="1" max="65535" placeholder="2222" required>
+    </div>
+    <div>
+      <label>Destination IP (LAN)</label>
+      <input type="text" name="destip" placeholder="192.168.1.100" required>
+    </div>
+  </div>
+  <div class="g2" style="margin-bottom:.8rem">
+    <div>
+      <label>Destination port</label>
+      <input type="number" name="destport" min="1" max="65535" placeholder="22" required>
+    </div>
+  </div>
+  <button type="submit" class="sm">Add rule</button>
+  </form>
+</div>
+HTML
+
+html_foot

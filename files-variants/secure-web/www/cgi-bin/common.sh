@@ -73,6 +73,8 @@ pre{font-size:.78rem;max-height:200px;overflow-y:auto;margin:0;background:var(--
 <li><a href="/cgi-bin/dhcp"$([ "$active" = "dhcp" ] && echo ' class="active"')>DHCP/DNS</a></li>
 <li><a href="/cgi-bin/firewall"$([ "$active" = "firewall" ] && echo ' class="active"')>Firewall</a></li>
 <li><a href="/cgi-bin/vlan"$([ "$active" = "vlan" ] && echo ' class="active"')>VLAN</a></li>
+<li><a href="/cgi-bin/portfw"$([ "$active" = "portfw" ] && echo ' class="active"')>Port Fwd</a></li>
+<li><a href="/cgi-bin/logs"$([ "$active" = "logs" ] && echo ' class="active"')>Logi</a></li>
 <li><a href="/cgi-bin/diag"$([ "$active" = "diag" ] && echo ' class="active"')>Diagnostyka</a></li>
 <li><a href="/cgi-bin/system"$([ "$active" = "system" ] && echo ' class="active"')>System</a></li>
 <li><a href="/cgi-bin/logout" class="logout">Wyloguj &#8594;</a></li>

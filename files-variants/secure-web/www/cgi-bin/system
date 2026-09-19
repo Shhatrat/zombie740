@@ -61,6 +61,61 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         /etc/init.d/sysntpd restart >/dev/null 2>&1
         MSG='<div class="flash-ok">NTP zsynchronizowany.</div>'
     fi
+
+    if [ "$ACTION" = "backup" ]; then
+        tar czf /tmp/config-backup.tar.gz /etc/config/ 2>/dev/null
+        echo "Content-Type: application/gzip"
+        echo "Content-Disposition: attachment; filename=zombie740-config-$(date +%Y%m%d).tar.gz"
+        echo ""
+        cat /tmp/config-backup.tar.gz
+        rm -f /tmp/config-backup.tar.gz
+        exit 0
+    fi
+
+    if [ "$ACTION" = "restore" ]; then
+        TMPTAR="/tmp/config-restore.tar.gz"
+        if [ -f "$TMPTAR" ]; then
+            tar xzf "$TMPTAR" -C / 2>/dev/null
+            rm -f "$TMPTAR"
+            uci commit >/dev/null 2>&1
+            MSG='<div class="flash-ok">Konfiguracja przywrocona. Zrestartuj router.</div>'
+        else
+            MSG='<div class="flash-err">Brak pliku. Wgraj przez: scp backup.tar.gz root@192.168.1.1:/tmp/config-restore.tar.gz</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "led" ]; then
+        LEDNAME=$(get_param "$POST" "led" | tr -cd 'a-zA-Z0-9:.-')
+        TRIGGER=$(get_param "$POST" "trigger" | tr -cd 'a-zA-Z0-9-')
+        LEDPATH="/sys/class/leds/${LEDNAME}/trigger"
+        if [ -f "$LEDPATH" ] && [ -n "$TRIGGER" ]; then
+            echo "$TRIGGER" > "$LEDPATH" 2>/dev/null
+            MSG='<div class="flash-ok">LED zaktualizowany.</div>'
+        else
+            MSG='<div class="flash-err">Nieprawidlowy LED lub trigger.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "add_key" ]; then
+        KEY=$(get_param "$POST" "pubkey")
+        KEY=$(echo "$KEY" | head -1 | tr -cd 'a-zA-Z0-9+/= @._:-')
+        if echo "$KEY" | grep -qE '^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp256) '; then
+            mkdir -p /etc/dropbear
+            echo "$KEY" >> /etc/dropbear/authorized_keys
+            chmod 600 /etc/dropbear/authorized_keys 2>/dev/null
+            MSG='<div class="flash-ok">Klucz SSH dodany.</div>'
+        else
+            MSG='<div class="flash-err">Nieprawidlowy klucz. Wymagany format: ssh-rsa/ed25519/ecdsa.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "del_key" ]; then
+        KEYIDX=$(get_param "$POST" "keyidx" | tr -cd '0-9')
+        if [ -n "$KEYIDX" ] && [ -f /etc/dropbear/authorized_keys ]; then
+            sed -i "${KEYIDX}d" /etc/dropbear/authorized_keys 2>/dev/null
+            MSG='<div class="flash-ok">Klucz usuniety.</div>'
+        fi
+    fi
 fi
 
 HOSTNAME=$(uci get system.@system[0].hostname 2>/dev/null)
@@ -141,5 +196,85 @@ cat << HTML
   </div>
 </div>
 HTML
+
+# --- Backup / Restore ---
+cat << 'HTML'
+<div class="g2">
+  <div class="card">
+    <div class="sec">Backup konfiguracji</div>
+    <p class="hint">Pobierz archiwum tar.gz z /etc/config/</p>
+    <form method="post">
+    <input type="hidden" name="action" value="backup">
+    <button type="submit" class="sm">Pobierz backup</button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="sec">Przywrocenie konfiguracji</div>
+    <p class="hint">Wgraj wcześniejszy backup przez SSH, potem kliknij Przywroc:</p>
+    <p class="hint"><code>scp backup.tar.gz root@192.168.1.1:/tmp/config-restore.tar.gz</code></p>
+    <form method="post">
+    <input type="hidden" name="action" value="restore">
+    <button type="submit" class="sm danger" onclick="return confirm('Przywrocic konfiguracje?')">Przywroc /tmp/config-restore.tar.gz</button>
+    </form>
+  </div>
+</div>
+HTML
+
+# --- LED control ---
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">Sterowanie diodami LED</div>'
+LEDS=$(ls /sys/class/leds/ 2>/dev/null)
+if [ -n "$LEDS" ]; then
+    echo '<table><thead><tr><th>LED</th><th>Trigger</th><th>Dostepne</th><th>Ustaw</th></tr></thead><tbody>'
+    for led in $LEDS; do
+        CUR=$(cat /sys/class/leds/$led/trigger 2>/dev/null | grep -o '\[.*\]' | tr -d '[]')
+        AVAIL=$(cat /sys/class/leds/$led/trigger 2>/dev/null | tr ' ' '\n' | grep -v '\[' | tr '\n' ' ')
+        printf '<tr><td><code>%s</code></td><td><strong>%s</strong></td><td style="font-size:.75rem">%s</td><td>' \
+            "$led" "${CUR:-?}" "$AVAIL"
+        printf '<form method="post" style="margin:0;display:flex;gap:.3rem">'
+        printf '<input type="hidden" name="action" value="led">'
+        printf '<input type="hidden" name="led" value="%s">' "$led"
+        printf '<input type="text" name="trigger" placeholder="none/heartbeat" style="width:140px">'
+        printf '<button type="submit" class="sm">OK</button></form></td></tr>\n'
+    done
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">Brak LED-ow w /sys/class/leds/</p>'
+fi
+echo '</div>'
+
+# --- SSH keys ---
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">Klucze SSH (authorized_keys)</div>'
+KEYFILE="/etc/dropbear/authorized_keys"
+if [ -f "$KEYFILE" ] && [ -s "$KEYFILE" ]; then
+    echo '<table><thead><tr><th>#</th><th>Typ</th><th>Klucz (fragment)</th><th>Komentarz</th><th></th></tr></thead><tbody>'
+    idx=0
+    while IFS= read -r line; do
+        idx=$(( idx + 1 ))
+        [ -z "$line" ] && continue
+        ktype=$(echo "$line" | cut -d' ' -f1)
+        kdata=$(echo "$line" | cut -d' ' -f2 | cut -c1-20)
+        kcomment=$(echo "$line" | cut -d' ' -f3-)
+        printf '<tr><td>%d</td><td><code>%s</code></td><td><code>%s...</code></td><td>%s</td><td>' \
+            "$idx" "$ktype" "$kdata" "$kcomment"
+        printf '<form method="post" style="margin:0">'
+        printf '<input type="hidden" name="action" value="del_key">'
+        printf '<input type="hidden" name="keyidx" value="%d">' "$idx"
+        printf '<button type="submit" class="sm danger">Usun</button></form></td></tr>\n'
+    done < "$KEYFILE"
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">Brak kluczy. Logowanie tylko haslem.</p>'
+fi
+cat << 'HTML'
+<form method="post" style="margin-top:.8rem">
+<input type="hidden" name="action" value="add_key">
+<label>Dodaj klucz publiczny</label>
+<input type="text" name="pubkey" placeholder="ssh-ed25519 AAAA... user@host" style="font-family:monospace;font-size:.78rem">
+<button type="submit" class="sm" style="margin-top:.4rem">Dodaj klucz</button>
+</form>
+HTML
+echo '</div>'
 
 html_foot

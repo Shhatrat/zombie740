@@ -38,7 +38,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 
     if [ "$ACTION" = "reboot" ]; then
         html_head "System" "system"
-        echo '<div class="flash-ok">Restarting in 3 seconds...</div>'
+        echo '<div class="flash-ok">Rebooting in 3 seconds...</div>'
         html_foot
         ( sleep 3; reboot ) &
         exit 0
@@ -53,13 +53,68 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
             ( sleep 2; sysupgrade "$TMPFILE" ) &
             exit 0
         else
-            MSG='<div class="flash-err">File not found. Upload via: scp zombie740-sysupgrade.bin root@192.168.1.1:/tmp/sysupgrade_upload.bin</div>'
+            MSG='<div class="flash-err">File not found. Use scp to /tmp/sysupgrade_upload.bin</div>'
         fi
     fi
 
     if [ "$ACTION" = "ntp" ]; then
         /etc/init.d/sysntpd restart >/dev/null 2>&1
         MSG='<div class="flash-ok">NTP synchronized.</div>'
+    fi
+
+    if [ "$ACTION" = "backup" ]; then
+        tar czf /tmp/config-backup.tar.gz /etc/config/ 2>/dev/null
+        echo "Content-Type: application/gzip"
+        echo "Content-Disposition: attachment; filename=zombie740-config-$(date +%Y%m%d).tar.gz"
+        echo ""
+        cat /tmp/config-backup.tar.gz
+        rm -f /tmp/config-backup.tar.gz
+        exit 0
+    fi
+
+    if [ "$ACTION" = "restore" ]; then
+        TMPTAR="/tmp/config-restore.tar.gz"
+        if [ -f "$TMPTAR" ]; then
+            tar xzf "$TMPTAR" -C / 2>/dev/null
+            rm -f "$TMPTAR"
+            uci commit >/dev/null 2>&1
+            MSG='<div class="flash-ok">Config restored. Please reboot.</div>'
+        else
+            MSG='<div class="flash-err">File not found. Upload via: scp backup.tar.gz root@192.168.1.1:/tmp/config-restore.tar.gz</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "led" ]; then
+        LEDNAME=$(get_param "$POST" "led" | tr -cd 'a-zA-Z0-9:.-')
+        TRIGGER=$(get_param "$POST" "trigger" | tr -cd 'a-zA-Z0-9-')
+        LEDPATH="/sys/class/leds/${LEDNAME}/trigger"
+        if [ -f "$LEDPATH" ] && [ -n "$TRIGGER" ]; then
+            echo "$TRIGGER" > "$LEDPATH" 2>/dev/null
+            MSG='<div class="flash-ok">LED updated.</div>'
+        else
+            MSG='<div class="flash-err">Invalid LED or trigger.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "add_key" ]; then
+        KEY=$(get_param "$POST" "pubkey")
+        KEY=$(echo "$KEY" | head -1 | tr -cd 'a-zA-Z0-9+/= @._:-')
+        if echo "$KEY" | grep -qE '^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp256) '; then
+            mkdir -p /etc/dropbear
+            echo "$KEY" >> /etc/dropbear/authorized_keys
+            chmod 600 /etc/dropbear/authorized_keys 2>/dev/null
+            MSG='<div class="flash-ok">SSH key added.</div>'
+        else
+            MSG='<div class="flash-err">Invalid key. Required format: ssh-rsa/ed25519/ecdsa.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "del_key" ]; then
+        KEYIDX=$(get_param "$POST" "keyidx" | tr -cd '0-9')
+        if [ -n "$KEYIDX" ] && [ -f /etc/dropbear/authorized_keys ]; then
+            sed -i "${KEYIDX}d" /etc/dropbear/authorized_keys 2>/dev/null
+            MSG='<div class="flash-ok">Key deleted.</div>'
+        fi
     fi
 fi
 
@@ -74,28 +129,24 @@ FLASH_FREE=$(df /overlay 2>/dev/null | awk 'NR==2{print int($4/1024) " KB"}')
 DATE=$(date)
 
 html_head "System" "system"
-
 echo "$MSG"
 
 cat << HTML
 <div class="g2">
   <div class="card">
-    <div class="sec">Information</div>
-    <table>
-      <tbody>
-        <tr><th>Hostname</th><td>$HOSTNAME</td></tr>
-        <tr><th>OpenWrt</th><td>${OPENWRT:-—}</td></tr>
-        <tr><th>Kernel</th><td>$KERNEL</td></tr>
-        <tr><th>Architektura</th><td>$ARCH</td></tr>
-        <tr><th>Uptime</th><td>$UPTIME</td></tr>
-        <tr><th>Date/time</th><td>$DATE</td></tr>
-        <tr><th>Timezone</th><td>${TIMEZONE:-—}</td></tr>
-        <tr><th>Flash total</th><td>${FLASH_TOTAL:-—}</td></tr>
-        <tr><th>Flash free</th><td>${FLASH_FREE:-—}</td></tr>
-      </tbody>
-    </table>
+    <div class="sec">System Info</div>
+    <table><tbody>
+      <tr><th>Hostname</th><td>$HOSTNAME</td></tr>
+      <tr><th>OpenWrt</th><td>${OPENWRT:-—}</td></tr>
+      <tr><th>Kernel</th><td>$KERNEL</td></tr>
+      <tr><th>Architecture</th><td>$ARCH</td></tr>
+      <tr><th>Uptime</th><td>$UPTIME</td></tr>
+      <tr><th>Date/time</th><td>$DATE</td></tr>
+      <tr><th>Timezone</th><td>${TIMEZONE:-—}</td></tr>
+      <tr><th>Flash total</th><td>${FLASH_TOTAL:-—}</td></tr>
+      <tr><th>Flash free</th><td>${FLASH_FREE:-—}</td></tr>
+    </tbody></table>
   </div>
-
   <div class="card">
     <div class="sec">Change hostname</div>
     <form method="post">
@@ -106,34 +157,29 @@ cat << HTML
     </form>
   </div>
 </div>
-
 <div class="g2">
   <div class="card">
     <div class="sec">Change root password</div>
     <form method="post">
     <input type="hidden" name="action" value="passwd">
-    <label>New password</label>
-    <input type="password" name="p1" required>
-    <label>Repeat password</label>
-    <input type="password" name="p2" required>
+    <label>New password</label><input type="password" name="p1" required>
+    <label>Repeat password</label><input type="password" name="p2" required>
     <button type="submit" class="sm" style="margin-top:.4rem">Change password</button>
     </form>
   </div>
-
   <div class="card">
     <div class="sec">System actions</div>
     <form method="post" style="margin-bottom:.6rem">
     <input type="hidden" name="action" value="ntp">
     <button type="submit" class="sm">Sync NTP</button>
     </form>
-    <form method="post" style="margin-bottom:.6rem"
-          onsubmit="return confirm('Restart router?')">
+    <form method="post" style="margin-bottom:.6rem" onsubmit="return confirm('Reboot the router?')">
     <input type="hidden" name="action" value="reboot">
-    <button type="submit" class="sm danger">Restart router</button>
+    <button type="submit" class="sm danger">Reboot</button>
     </form>
     <hr style="margin:.8rem 0">
     <div class="sec" style="margin-bottom:.4rem">Firmware upgrade (sysupgrade)</div>
-    <p class="hint">Upload file via SSH: <code>scp zombie740-sysupgrade.bin root@192.168.1.1:/tmp/sysupgrade_upload.bin</code></p>
+    <p class="hint">Upload via SSH: <code>scp zombie740-sysupgrade.bin root@192.168.1.1:/tmp/sysupgrade_upload.bin</code></p>
     <form method="post" onsubmit="return confirm('Flash firmware? Router will reboot!')">
     <input type="hidden" name="action" value="flash">
     <button type="submit" class="sm danger">Flash /tmp/sysupgrade_upload.bin</button>
@@ -141,5 +187,81 @@ cat << HTML
   </div>
 </div>
 HTML
+
+cat << 'HTML'
+<div class="g2">
+  <div class="card">
+    <div class="sec">Config backup</div>
+    <p class="hint">Download tar.gz of /etc/config/</p>
+    <form method="post">
+    <input type="hidden" name="action" value="backup">
+    <button type="submit" class="sm">Download backup</button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="sec">Config restore</div>
+    <p class="hint">Upload a previous backup via SSH, then click Restore:</p>
+    <p class="hint"><code>scp backup.tar.gz root@192.168.1.1:/tmp/config-restore.tar.gz</code></p>
+    <form method="post">
+    <input type="hidden" name="action" value="restore">
+    <button type="submit" class="sm danger" onclick="return confirm('Restore config?')">Restore /tmp/config-restore.tar.gz</button>
+    </form>
+  </div>
+</div>
+HTML
+
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">LED control</div>'
+LEDS=$(ls /sys/class/leds/ 2>/dev/null)
+if [ -n "$LEDS" ]; then
+    echo '<table><thead><tr><th>LED</th><th>Trigger</th><th>Available</th><th>Set</th></tr></thead><tbody>'
+    for led in $LEDS; do
+        CUR=$(cat /sys/class/leds/$led/trigger 2>/dev/null | grep -o '\[.*\]' | tr -d '[]')
+        AVAIL=$(cat /sys/class/leds/$led/trigger 2>/dev/null | tr ' ' '\n' | grep -v '\[' | tr '\n' ' ')
+        printf '<tr><td><code>%s</code></td><td><strong>%s</strong></td><td style="font-size:.75rem">%s</td><td>' \
+            "$led" "${CUR:-?}" "$AVAIL"
+        printf '<form method="post" style="margin:0;display:flex;gap:.3rem">'
+        printf '<input type="hidden" name="action" value="led">'
+        printf '<input type="hidden" name="led" value="%s">' "$led"
+        printf '<input type="text" name="trigger" placeholder="none/heartbeat" style="width:140px">'
+        printf '<button type="submit" class="sm">OK</button></form></td></tr>\n'
+    done
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">No LEDs in /sys/class/leds/</p>'
+fi
+echo '</div>'
+
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">SSH keys (authorized_keys)</div>'
+KEYFILE="/etc/dropbear/authorized_keys"
+if [ -f "$KEYFILE" ] && [ -s "$KEYFILE" ]; then
+    echo '<table><thead><tr><th>#</th><th>Type</th><th>Key (preview)</th><th>Comment</th><th></th></tr></thead><tbody>'
+    idx=0
+    while IFS= read -r line; do
+        idx=$(( idx + 1 ))
+        [ -z "$line" ] && continue
+        ktype=$(echo "$line" | cut -d' ' -f1)
+        kdata=$(echo "$line" | cut -d' ' -f2 | cut -c1-20)
+        kcomment=$(echo "$line" | cut -d' ' -f3-)
+        printf '<tr><td>%d</td><td><code>%s</code></td><td><code>%s...</code></td><td>%s</td><td>' \
+            "$idx" "$ktype" "$kdata" "$kcomment"
+        printf '<form method="post" style="margin:0"><input type="hidden" name="action" value="del_key">'
+        printf '<input type="hidden" name="keyidx" value="%d">' "$idx"
+        printf '<button type="submit" class="sm danger">Delete</button></form></td></tr>\n'
+    done < "$KEYFILE"
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">No keys. Password login only.</p>'
+fi
+cat << 'HTML'
+<form method="post" style="margin-top:.8rem">
+<input type="hidden" name="action" value="add_key">
+<label>Add public key</label>
+<input type="text" name="pubkey" placeholder="ssh-ed25519 AAAA... user@host" style="font-family:monospace;font-size:.78rem">
+<button type="submit" class="sm" style="margin-top:.4rem">Add key</button>
+</form>
+HTML
+echo '</div>'
 
 html_foot

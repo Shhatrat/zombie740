@@ -11,7 +11,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
     TARGET_VAL=$(sanitize "$(get_param "$POST" "target")")
     TARGET_VAL=$(echo "$TARGET_VAL" | tr -cd 'a-zA-Z0-9._:-')
 
-    if [ -n "$TARGET_VAL" ]; then
+    if [ -n "$TARGET_VAL" ] || [ "$TOOL" = "conntrack" ]; then
         case "$TOOL" in
             ping)
                 OUTPUT=$(ping -c 4 -W 2 "$TARGET_VAL" 2>&1)
@@ -21,6 +21,27 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
                 ;;
             nslookup)
                 OUTPUT=$(nslookup "$TARGET_VAL" 2>&1)
+                ;;
+            wol)
+                MAC=$(echo "$TARGET_VAL" | tr -cd '0-9a-fA-F:')
+                if echo "$MAC" | grep -qE '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'; then
+                    OUTPUT=$(etherwake "$MAC" 2>&1 && echo "Pakiet WoL wyslany do $MAC")
+                else
+                    OUTPUT="Nieprawidlowy format MAC (XX:XX:XX:XX:XX:XX)"
+                fi
+                ;;
+            iperf3)
+                HOST=$(echo "$TARGET_VAL" | tr -cd 'a-zA-Z0-9._:-')
+                if [ -n "$HOST" ]; then
+                    OUTPUT=$(iperf3 -c "$HOST" -t 5 2>&1)
+                else
+                    OUTPUT="Podaj adres IP serwera iperf3."
+                fi
+                ;;
+            conntrack)
+                OUTPUT=$(cat /proc/net/nf_conntrack 2>/dev/null | head -100 || echo "conntrack niedostepny")
+                TOOL="conntrack"
+                TARGET_VAL="(tabela polaczen)"
                 ;;
             *)
                 OUTPUT="Nieznane narzedzie."
@@ -64,15 +85,49 @@ cat << 'HTML'
   </div>
 </div>
 
-<div class="card" style="margin-bottom:1.5rem">
-  <div class="sec">DNS Lookup</div>
-  <form method="post">
-  <input type="hidden" name="tool" value="nslookup">
-  <div class="row2">
-    <div><label>Domena</label><input type="text" name="target" placeholder="example.com"></div>
-    <button type="submit" class="sm" style="margin-top:1.2rem">Lookup</button>
+<div class="g2">
+  <div class="card">
+    <div class="sec">DNS Lookup</div>
+    <form method="post">
+    <input type="hidden" name="tool" value="nslookup">
+    <div class="row2">
+      <div><label>Domena</label><input type="text" name="target" placeholder="example.com"></div>
+      <button type="submit" class="sm" style="margin-top:1.2rem">Lookup</button>
+    </div>
+    </form>
   </div>
-  </form>
+  <div class="card">
+    <div class="sec">Wake-on-LAN</div>
+    <form method="post">
+    <input type="hidden" name="tool" value="wol">
+    <div class="row2">
+      <div><label>Adres MAC</label><input type="text" name="target" placeholder="AA:BB:CC:DD:EE:FF"></div>
+      <button type="submit" class="sm" style="margin-top:1.2rem">Budz</button>
+    </div>
+    </form>
+  </div>
+</div>
+
+<div class="g2">
+  <div class="card">
+    <div class="sec">iperf3 — test predkosci</div>
+    <form method="post">
+    <input type="hidden" name="tool" value="iperf3">
+    <div class="row2">
+      <div><label>Serwer iperf3 (IP)</label><input type="text" name="target" placeholder="192.168.1.100"></div>
+      <button type="submit" class="sm" style="margin-top:1.2rem">Test (5s)</button>
+    </div>
+    <p class="hint">Wymaga serwera: <code>iperf3 -s</code> na hoście docelowym</p>
+    </form>
+  </div>
+  <div class="card">
+    <div class="sec">Tablica polaczen (conntrack)</div>
+    <form method="post">
+    <input type="hidden" name="tool" value="conntrack">
+    <input type="hidden" name="target" value="x">
+    <button type="submit" class="sm">Pokaz polaczenia</button>
+    </form>
+  </div>
 </div>
 HTML
 
@@ -81,7 +136,7 @@ echo '<div class="sec">Tabela routingu</div>'
 echo '<pre>'
 ip route show 2>/dev/null
 echo '</pre>'
-echo '<div class="sec" style="margin-top:1rem">Polaczenia aktywne</div>'
+echo '<div class="sec" style="margin-top:1rem">Polaczenia aktywne (ss)</div>'
 echo '<pre>'
 ss -tnp 2>/dev/null | head -20 || netstat -tn 2>/dev/null | head -20
 echo '</pre></div>'

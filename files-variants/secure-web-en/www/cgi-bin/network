@@ -37,6 +37,39 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         /etc/init.d/network reload >/dev/null 2>&1
         MSG='<div class="flash-ok">WAN config saved.</div>'
     fi
+
+    if [ "$ACTION" = "add_route" ]; then
+        RNAME=$(get_param "$POST" "rname" | tr -cd 'a-zA-Z0-9_')
+        RDEST=$(sanitize "$(get_param "$POST" "rdest")")
+        RGW=$(sanitize "$(get_param "$POST" "rgw")")
+        RMETRIC=$(get_param "$POST" "rmetric" | tr -cd '0-9')
+        [ -z "$RMETRIC" ] && RMETRIC="0"
+        if [ -n "$RNAME" ] && \
+           echo "$RDEST" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$' && \
+           echo "$RGW" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'; then
+            uci set network.${RNAME}=route
+            uci set network.${RNAME}.interface='lan'
+            uci set network.${RNAME}.target="${RDEST%/*}"
+            uci set network.${RNAME}.netmask=$(ipcalc.sh "$RDEST" 2>/dev/null | awk -F= '/NETMASK/{print $2}')
+            uci set network.${RNAME}.gateway="$RGW"
+            [ "$RMETRIC" != "0" ] && uci set network.${RNAME}.metric="$RMETRIC"
+            uci commit network
+            /etc/init.d/network reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">Route added.</div>'
+        else
+            MSG='<div class="flash-err">Invalid data. Format: network=1.2.3.0/24 gw=1.2.3.1</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "del_route" ]; then
+        RNAME=$(get_param "$POST" "rname" | tr -cd 'a-zA-Z0-9_')
+        if [ -n "$RNAME" ]; then
+            uci delete network.${RNAME} 2>/dev/null
+            uci commit network
+            /etc/init.d/network reload >/dev/null 2>&1
+            MSG='<div class="flash-ok">Route deleted.</div>'
+        fi
+    fi
 fi
 
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null)
@@ -50,7 +83,6 @@ WAN_DNS=$(uci get network.wan.dns 2>/dev/null)
 GW_ACT=$(ip route show default 2>/dev/null | awk '{print $3}' | head -1)
 
 html_head "Network" "network"
-
 echo "$MSG"
 
 cat << HTML
@@ -71,7 +103,6 @@ cat << HTML
     <button type="submit" class="sm" style="margin-top:.6rem">Save LAN</button>
     </form>
   </div>
-
   <div class="card">
     <div class="sec">WAN</div>
     <p class="hint">Current IP: <strong>${WAN_IP:-—}</strong> &nbsp; Gateway: <strong>${GW_ACT:-—}</strong></p>
@@ -115,10 +146,45 @@ cat << 'HTML'
     </tbody>
   </table>
 </div>
-
 <script>
 function toggleStatic(v){document.getElementById('static-fields').style.display=v==='static'?'block':'none';}
 </script>
 HTML
+
+echo '<div class="card" style="margin-bottom:1.5rem">'
+echo '<div class="sec">Static routes</div>'
+ROUTES=$(uci show network 2>/dev/null | grep "=route$" | cut -d. -f2 | cut -d= -f1)
+if [ -n "$ROUTES" ]; then
+    echo '<table><thead><tr><th>UCI name</th><th>Destination</th><th>Gateway</th><th>Metric</th><th></th></tr></thead><tbody>'
+    for r in $ROUTES; do
+        rtarget=$(uci get network.${r}.target 2>/dev/null)
+        rmask=$(uci get network.${r}.netmask 2>/dev/null)
+        rgw=$(uci get network.${r}.gateway 2>/dev/null)
+        rmetric=$(uci get network.${r}.metric 2>/dev/null || echo "0")
+        printf '<tr><td><code>%s</code></td><td>%s/%s</td><td>%s</td><td>%s</td><td>' \
+            "$r" "$rtarget" "$rmask" "$rgw" "$rmetric"
+        printf '<form method="post" style="margin:0"><input type="hidden" name="action" value="del_route">'
+        printf '<input type="hidden" name="rname" value="%s">' "$r"
+        printf '<button type="submit" class="sm danger">Delete</button></form></td></tr>\n'
+    done
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">No static routes in UCI.</p>'
+fi
+cat << 'HTML'
+<form method="post" style="margin-top:.8rem">
+<input type="hidden" name="action" value="add_route">
+<div class="g2" style="margin-bottom:.4rem">
+  <div><label>UCI name</label><input type="text" name="rname" placeholder="route_vpn"></div>
+  <div><label>Destination (CIDR)</label><input type="text" name="rdest" placeholder="10.0.0.0/24"></div>
+</div>
+<div class="g2" style="margin-bottom:.4rem">
+  <div><label>Gateway</label><input type="text" name="rgw" placeholder="192.168.1.254"></div>
+  <div><label>Metric (optional)</label><input type="number" name="rmetric" value="0" min="0"></div>
+</div>
+<button type="submit" class="sm">Add route</button>
+</form>
+HTML
+echo '</div>'
 
 html_foot

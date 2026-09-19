@@ -1,0 +1,68 @@
+#!/bin/sh
+. /www/cgi-bin/common.sh
+
+FILTER=""
+LEVEL=""
+LINES=100
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    POST=$(parse_post)
+    FILTER=$(get_param "$POST" "filter" | tr -cd 'a-zA-Z0-9._:/ -')
+    LEVEL=$(get_param "$POST" "level" | tr -cd 'a-zA-Z')
+    LINES=$(get_param "$POST" "lines" | tr -cd '0-9')
+    [ -z "$LINES" ] || [ "$LINES" -lt 10 ] && LINES=100
+    [ "$LINES" -gt 500 ] && LINES=500
+fi
+
+html_head "Logi" "logs"
+
+cat << HTML
+<div class="card" style="margin-bottom:1.5rem">
+  <div class="sec">Filtr logow</div>
+  <form method="post">
+  <div class="g2" style="margin-bottom:.6rem">
+    <div>
+      <label>Szukaj (grep)</label>
+      <input type="text" name="filter" value="${FILTER}" placeholder="np. dnsmasq, firewall, error">
+    </div>
+    <div>
+      <label>Poziom</label>
+      <select name="level">
+        <option value=""$([ -z "$LEVEL" ] && echo ' selected')>Wszystkie</option>
+        <option value="err"$([ "$LEVEL" = "err" ] && echo ' selected')>Error</option>
+        <option value="warn"$([ "$LEVEL" = "warn" ] && echo ' selected')>Warning</option>
+        <option value="notice"$([ "$LEVEL" = "notice" ] && echo ' selected')>Notice</option>
+        <option value="info"$([ "$LEVEL" = "info" ] && echo ' selected')>Info</option>
+        <option value="debug"$([ "$LEVEL" = "debug" ] && echo ' selected')>Debug</option>
+      </select>
+    </div>
+  </div>
+  <div style="display:flex;gap:.6rem;align-items:flex-end">
+    <div>
+      <label>Ostatnie N linii</label>
+      <input type="number" name="lines" value="${LINES}" min="10" max="500" style="width:90px">
+    </div>
+    <button type="submit" class="sm" style="margin-bottom:0">Filtruj</button>
+  </div>
+  </form>
+</div>
+HTML
+
+echo '<div class="card">'
+echo '<div class="sec">Logi systemowe</div>'
+echo '<pre style="max-height:500px">'
+
+LOGCMD="logread 2>/dev/null"
+if [ -n "$LEVEL" ]; then
+    LOGCMD="$LOGCMD | grep -i \"$LEVEL\""
+fi
+if [ -n "$FILTER" ]; then
+    LOGCMD="$LOGCMD | grep -i \"$FILTER\""
+fi
+LOGCMD="$LOGCMD | tail -${LINES}"
+
+eval "$LOGCMD" | sed 's/</\&lt;/g; s/>/\&gt;/g'
+
+echo '</pre></div>'
+
+html_foot

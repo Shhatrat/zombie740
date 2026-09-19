@@ -39,12 +39,14 @@ Custom **OpenWrt 24.10** firmware for the **TP-Link TL-WR740N v4** — a 2011 ro
 
 ## Variants
 
-Six variants fit in 4MB flash. Pick one based on your use case.
+Eight variants fit in 4MB flash. Pick one based on your use case.
 
 | Variant | Size | Use case |
 |---|---|---|
 | 🟢 **BRIDGE** | ~2.5 MB | Dumb switch / L2 bridge. All ports in one segment, no routing, no DHCP. Just SSH management. |
+| 📶 **BRIDGE-WIFI** | ~3.4 MB | Like BRIDGE + WiFi AP. SSID: `ZOMBIE740`, WPA2: `zombie740`. |
 | 🟡 **MINI** | ~3.0 MB | Second router behind your main router. DHCP+DNS on LAN, no firewall (not for WAN exposure). |
+| 📶 **MINI-WIFI** | ~3.6 MB | Like MINI + WiFi AP. DHCP+DNS on LAN. SSID: `ZOMBIE740`, WPA2: `zombie740`. |
 | 🔴 **SECURE** | ~3.5 MB | Edge router. Full firewall, DROP WAN, NAT/masquerade, DHCP+DNS, SSH LAN-only. |
 | 🌐 **SECURE-WEB** | ~3.8 MB | Like SECURE + shell CGI web panel in Polish at `http://192.168.1.1`. |
 | 🌐 **SECURE-WEB-EN** | ~3.8 MB | Like SECURE-WEB but with English web panel. |
@@ -52,20 +54,23 @@ Six variants fit in 4MB flash. Pick one based on your use case.
 
 ### Package comparison
 
-| Package | BRIDGE | MINI | SECURE | SECURE-WEB(-EN) | VPN |
-|---|:---:|:---:|:---:|:---:|:---:|
-| dropbear (SSH) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| dnsmasq (DHCP+DNS) | — | ✅ | ✅ | ✅ | ✅ |
-| firewall4 | — | — | ✅ | ✅ | ✅ |
-| nftables | — | — | ✅ | ✅ | ✅ |
-| uhttpd (web server) | — | — | — | ✅ | — |
-| kmod-wireguard | — | — | — | — | ✅ |
-| wireguard-tools | — | — | — | — | ✅ |
-| swconfig (VLAN) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| netifd | ✅ | ✅ | ✅ | ✅ | ✅ |
-| mtd (flash tool) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| LuCI (web UI) | ❌ | ❌ | ❌ | ❌ | ❌ |
-| WiFi (ath9k) | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Package | BRIDGE | BRIDGE-WIFI | MINI | MINI-WIFI | SECURE | SECURE-WEB(-EN) | VPN |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| dropbear (SSH) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| dnsmasq (DHCP+DNS) | — | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| firewall4 | — | — | — | — | ✅ | ✅ | ✅ |
+| nftables | — | — | — | — | ✅ | ✅ | ✅ |
+| uhttpd (web server) | — | — | — | — | — | ✅ | — |
+| kmod-wireguard | — | — | — | — | — | — | ✅ |
+| wireguard-tools | — | — | — | — | — | — | ✅ |
+| swconfig (VLAN) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| netifd | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| mtd (flash tool) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| kmod-ath9k (WiFi) | — | ✅ | — | ✅ | — | — | — |
+| hostapd / wpad | — | wpad | — | hostapd-mini | — | — | — |
+| etherwake (WoL) | — | — | — | — | — | ✅ | — |
+| iperf3 | — | — | — | — | — | ✅ | — |
+| LuCI (web UI) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### What's baked in (all variants)
 
@@ -343,9 +348,27 @@ During flashing: power LED blinks rapidly — do not power off.
 
 ## WiFi
 
-The AR9330 WiFi chip is physically present on the board. **It does not fit in 4MB flash alongside firewall4/nftables on OpenWrt 24.10** — the driver stack (kmod-ath9k + wireless-regdb + iw + iwinfo) adds ~900KB, leaving no room.
+The AR9330 WiFi chip is physically present on the board. It fits in the BRIDGE-WIFI and MINI-WIFI variants, but **not alongside firewall4/nftables** (SECURE/VPN) — the nftables stack leaves no room for the ~650–900 KB WiFi driver stack.
 
-Options if you need WiFi:
+| Variant | WiFi | Notes |
+|---|---|---|
+| BRIDGE-WIFI | ✅ AP, WPA2 | wpad-basic-mbedtls, ~900 KB overhead |
+| MINI-WIFI | ✅ AP, WPA2 | hostapd-mini (AP-only), ~650 KB overhead |
+| SECURE / VPN | ❌ | firewall4+nftables leaves no room |
+
+Default WiFi credentials (change after flashing!):
+- **SSID:** `ZOMBIE740`
+- **Password:** `zombie740`
+- **Band:** 2.4 GHz b/g/n, channel auto, country PL
+
+To change WiFi password on the router:
+```bash
+uci set wireless.default_radio0.key='newpassword'
+uci commit wireless
+wifi reload
+```
+
+If you need WiFi + full firewall:
 - **OpenWrt 21.02** — older kernel (5.10), iptables instead of nftables, smaller footprint. WiFi + basic firewall fits.
 - **Use as wired-only router** and add a separate access point on the LAN.
 

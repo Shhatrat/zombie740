@@ -10,7 +10,9 @@ MEMUSED=$(( (MEMTOTAL - MEMFREE) / 1024 ))
 MEMTOTAL_MB=$(( MEMTOTAL / 1024 ))
 MEMPCT=$(( (MEMTOTAL - MEMFREE) * 100 / MEMTOTAL ))
 LOAD=$(cut -d' ' -f1 /proc/loadavg)
-FW_STATUS=$(nft list ruleset 2>/dev/null | grep -c 'table' && echo "ACTIVE" || echo "OFF")
+LOAD100=$(awk 'NR==1{printf "%d", $1*100}' /proc/loadavg)
+[ "$LOAD100" -gt 400 ] && LOAD100=400
+LOADPCT=$(( LOAD100 / 4 ))
 [ "$(nft list ruleset 2>/dev/null | grep -c table)" -gt 0 ] && FW_LABEL='<span class="badge bg">&#9679; ACTIVE</span>' || FW_LABEL='<span class="badge br">&#9679; OFF</span>'
 
 LAN_IP=$(ip -4 addr show br-lan 2>/dev/null | awk '/inet /{print $2}' | head -1)
@@ -51,30 +53,49 @@ cat << HTML
     <div class="val">$FW_LABEL</div>
   </div>
 </div>
+HTML
 
+cat << HTML
+<div class="g2" style="margin-bottom:1.5rem">
+  <div class="card">
+    <div class="sec">RAM — ${MEMPCT}% (${MEMUSED}/${MEMTOTAL_MB} MB)</div>
+    <svg viewBox="0 0 300 40" style="width:100%;height:40px">
+      <rect x="0" y="8" width="300" height="24" rx="4" fill="var(--pico-muted-border-color)"/>
+      <rect x="0" y="8" width="$(( MEMPCT * 3 ))" height="24" rx="4" fill="$([ "$MEMPCT" -gt 80 ] && echo '#f44336' || [ "$MEMPCT" -gt 60 ] && echo '#ff9800' || echo 'var(--pico-primary)')"/>
+      <text x="150" y="24" text-anchor="middle" fill="white" font-size="11" font-family="monospace">${MEMPCT}%</text>
+    </svg>
+  </div>
+  <div class="card">
+    <div class="sec">Load avg — $LOAD (${LOADPCT}% 1-core)</div>
+    <svg viewBox="0 0 300 40" style="width:100%;height:40px">
+      <rect x="0" y="8" width="300" height="24" rx="4" fill="var(--pico-muted-border-color)"/>
+      <rect x="0" y="8" width="$(( LOADPCT * 3 ))" height="24" rx="4" fill="$([ "$LOADPCT" -gt 80 ] && echo '#f44336' || [ "$LOADPCT" -gt 50 ] && echo '#ff9800' || echo 'var(--pico-primary)')"/>
+      <text x="150" y="24" text-anchor="middle" fill="white" font-size="11" font-family="monospace">${LOADPCT}%</text>
+    </svg>
+  </div>
+</div>
+HTML
+
+cat << HTML
 <div class="g2">
   <div class="card">
     <div class="sec">Network</div>
-    <table>
-      <tbody>
-        <tr><th>LAN</th><td>${LAN_IP:-—}</td><td><span class="badge bg">UP</span></td></tr>
-        <tr><th>WAN</th><td>$WAN_IP</td><td>$([ "$WAN_IP" != "—" ] && echo '<span class="badge bg">UP</span>' || echo '<span class="badge br">DOWN</span>')</td></tr>
-        <tr><th>Gateway</th><td>$GW</td><td></td></tr>
-        <tr><th>DNS</th><td>$DNS</td><td></td></tr>
-      </tbody>
-    </table>
+    <table><tbody>
+      <tr><th>LAN</th><td>${LAN_IP:-—}</td><td><span class="badge bg">UP</span></td></tr>
+      <tr><th>WAN</th><td>$WAN_IP</td><td>$([ "$WAN_IP" != "—" ] && echo '<span class="badge bg">UP</span>' || echo '<span class="badge br">DOWN</span>')</td></tr>
+      <tr><th>Gateway</th><td>$GW</td><td></td></tr>
+      <tr><th>DNS</th><td>$DNS</td><td></td></tr>
+    </tbody></table>
   </div>
   <div class="card">
     <div class="sec">System</div>
-    <table>
-      <tbody>
-        <tr><th>Hostname</th><td>$HOSTNAME</td></tr>
-        <tr><th>Kernel</th><td>$KERNEL</td></tr>
-        <tr><th>OpenWrt</th><td>${OPENWRT_VER:-—}</td></tr>
-        <tr><th>Arch</th><td>$ARCH</td></tr>
-        <tr><th>Flash free</th><td>$FLASH_FREE</td></tr>
-      </tbody>
-    </table>
+    <table><tbody>
+      <tr><th>Hostname</th><td>$HOSTNAME</td></tr>
+      <tr><th>Kernel</th><td>$KERNEL</td></tr>
+      <tr><th>OpenWrt</th><td>${OPENWRT_VER:-—}</td></tr>
+      <tr><th>Arch</th><td>$ARCH</td></tr>
+      <tr><th>Flash free</th><td>$FLASH_FREE</td></tr>
+    </tbody></table>
   </div>
 </div>
 HTML
@@ -94,7 +115,7 @@ if [ "$LEASE_COUNT" -gt 0 ]; then
             H=$(( LEFT / 3600 )); M=$(( (LEFT % 3600) / 60 ))
             TIME="${H}h ${M}m"
         else
-            TIME="wygaslo"
+            TIME="expired"
         fi
         printf '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n' \
             "$ip" "$mac" "${host:-?}" "$TIME"
