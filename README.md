@@ -1,5 +1,3 @@
-![I'm tired boss](docs/tired.jpg)
-
 ```
   ______  ___  __  __ ____ ___ _____  ____  _  _  ___
  |___  / / _ \|  \/  | __ )_ _| ____||__  || || |/ _ \
@@ -16,6 +14,8 @@
 # ZOMBIE740
 
 > *This router was supposed to be dead. It's not.*
+
+![I'm tired boss](docs/tired.jpg)
 
 Custom **OpenWrt 24.10** firmware for the **TP-Link TL-WR740N v4** — a 2011 router with 4MB flash that most people threw away years ago. ZOMBIE740 squeezes a modern kernel (6.6.151), firewall4/nftables, WireGuard and DHCP/DNS into 4MB with baked-in configs so the router is ready to use immediately after flashing — no manual configuration needed.
 
