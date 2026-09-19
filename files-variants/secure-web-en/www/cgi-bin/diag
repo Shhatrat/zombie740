@@ -1,0 +1,89 @@
+#!/bin/sh
+. /www/cgi-bin/common.sh
+
+OUTPUT=""
+TOOL=""
+TARGET_VAL=""
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    POST=$(parse_post)
+    TOOL=$(get_param "$POST" "tool")
+    TARGET_VAL=$(sanitize "$(get_param "$POST" "target")")
+    TARGET_VAL=$(echo "$TARGET_VAL" | tr -cd 'a-zA-Z0-9._:-')
+
+    if [ -n "$TARGET_VAL" ]; then
+        case "$TOOL" in
+            ping)
+                OUTPUT=$(ping -c 4 -W 2 "$TARGET_VAL" 2>&1)
+                ;;
+            traceroute)
+                OUTPUT=$(traceroute -n -w 2 -m 15 "$TARGET_VAL" 2>&1)
+                ;;
+            nslookup)
+                OUTPUT=$(nslookup "$TARGET_VAL" 2>&1)
+                ;;
+            *)
+                OUTPUT="Unknown tool."
+                ;;
+        esac
+    fi
+fi
+
+html_head "Diagnostics" "diag"
+
+if [ -n "$OUTPUT" ]; then
+    echo '<div class="card" id="wynik" style="margin-bottom:1.5rem">'
+    echo "<div class=\"sec\">Result: $TOOL $TARGET_VAL</div>"
+    echo '<pre>'
+    echo "$OUTPUT" | sed 's/</\&lt;/g; s/>/\&gt;/g'
+    echo '</pre></div>'
+    echo '<script>document.getElementById("wynik").scrollIntoView({behavior:"smooth"});</script>'
+fi
+
+cat << 'HTML'
+<div class="g2">
+  <div class="card">
+    <div class="sec">Ping</div>
+    <form method="post">
+    <input type="hidden" name="tool" value="ping">
+    <div class="row2">
+      <div><label>Host or IP address</label><input type="text" name="target" placeholder="8.8.8.8"></div>
+      <button type="submit" class="sm" style="margin-top:1.2rem">Ping</button>
+    </div>
+    </form>
+  </div>
+  <div class="card">
+    <div class="sec">Traceroute</div>
+    <form method="post">
+    <input type="hidden" name="tool" value="traceroute">
+    <div class="row2">
+      <div><label>Host or IP address</label><input type="text" name="target" placeholder="8.8.8.8"></div>
+      <button type="submit" class="sm" style="margin-top:1.2rem">Trace</button>
+    </div>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem">
+  <div class="sec">DNS Lookup</div>
+  <form method="post">
+  <input type="hidden" name="tool" value="nslookup">
+  <div class="row2">
+    <div><label>Domain</label><input type="text" name="target" placeholder="example.com"></div>
+    <button type="submit" class="sm" style="margin-top:1.2rem">Lookup</button>
+  </div>
+  </form>
+</div>
+HTML
+
+echo '<div class="card">'
+echo '<div class="sec">Routing table</div>'
+echo '<pre>'
+ip route show 2>/dev/null
+echo '</pre>'
+echo '<div class="sec" style="margin-top:1rem">Active connections</div>'
+echo '<pre>'
+ss -tnp 2>/dev/null | head -20 || netstat -tn 2>/dev/null | head -20
+echo '</pre></div>'
+
+html_foot

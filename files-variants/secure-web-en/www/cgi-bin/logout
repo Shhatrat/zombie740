@@ -1,0 +1,19 @@
+#!/bin/sh
+echo "Status: 401 Unauthorized"
+echo "WWW-Authenticate: Digest realm=\"ZOMBIE740\", qop=\"auth\", nonce=\"$(date +%s | md5sum | cut -c1-16)\""
+echo "Content-Type: text/html; charset=utf-8"
+echo ""
+cat << 'HTML'
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><title>Wylogowano</title>
+<meta http-equiv="refresh" content="2;url=/cgi-bin/status">
+<link rel="stylesheet" href="/pico.min.css">
+</head>
+<body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
+<div style="text-align:center">
+  <p style="font-size:1.1rem;color:var(--pico-muted-color)">Logged out. Redirecting...</p>
+</div>
+</body>
+</html>
+HTML
