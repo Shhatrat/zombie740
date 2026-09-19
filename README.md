@@ -43,14 +43,14 @@ Eight variants fit in 4MB flash. Pick one based on your use case.
 
 | Variant | Size | Use case |
 |---|---|---|
-| 🟢 **BRIDGE** | ~2.5 MB | Dumb switch / L2 bridge. All ports in one segment, no routing, no DHCP. Just SSH management. |
-| 📶 **BRIDGE-WIFI** | ~3.4 MB | Like BRIDGE + WiFi AP. SSID: `ZOMBIE740`, WPA2: `zombie740`. |
-| 🟡 **MINI** | ~3.0 MB | Second router behind your main router. DHCP+DNS on LAN, no firewall (not for WAN exposure). |
+| 🟢 **BRIDGE** | ~3.0 MB | Dumb switch / L2 bridge. All ports in one segment, no routing, no DHCP. Just SSH management. |
+| 📶 **BRIDGE-WIFI** | ~3.6 MB | Like BRIDGE + WiFi AP. SSID: `ZOMBIE740`, WPA2: `zombie740`. |
+| 🟡 **MINI** | ~3.1 MB | Second router behind your main router. DHCP+DNS on LAN, no firewall (not for WAN exposure). |
 | 📶 **MINI-WIFI** | ~3.6 MB | Like MINI + WiFi AP. DHCP+DNS on LAN. SSID: `ZOMBIE740`, WPA2: `zombie740`. |
 | 🔴 **SECURE** | ~3.5 MB | Edge router. Full firewall, DROP WAN, NAT/masquerade, DHCP+DNS, SSH LAN-only. |
-| 🌐 **SECURE-WEB** | ~3.8 MB | Like SECURE + shell CGI web panel in Polish at `http://192.168.1.1`. |
-| 🌐 **SECURE-WEB-EN** | ~3.8 MB | Like SECURE-WEB but with English web panel. |
-| 🔵 **VPN** | ~3.7 MB | VPN gateway. Like SECURE but routes LAN traffic through a WireGuard tunnel. |
+| 🌐 **SECURE-WEB** | ~3.6 MB | Like SECURE + shell CGI web panel in Polish at `http://192.168.1.1`. |
+| 🌐 **SECURE-WEB-EN** | ~3.6 MB | Like SECURE-WEB but with English web panel. |
+| 🔵 **VPN** | ~3.0 MB | VPN gateway. Like SECURE but routes LAN traffic through a WireGuard tunnel. |
 
 ### Package comparison
 
