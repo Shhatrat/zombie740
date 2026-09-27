@@ -1,0 +1,111 @@
+#!/bin/sh
+. /www/cgi-bin/common.sh
+
+MSG=""
+WOL_FILE="/etc/wol_targets"
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    POST=$(parse_post)
+    ACTION=$(get_param "$POST" "action")
+
+    if [ "$ACTION" = "wake" ]; then
+        MAC=$(get_param "$POST" "mac" | tr -cd 'a-fA-F0-9:')
+        IFACE=$(get_param "$POST" "iface" | tr -cd 'a-zA-Z0-9.')
+        [ -z "$IFACE" ] && IFACE="br-lan"
+        if echo "$MAC" | grep -qE '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'; then
+            etherwake -i "$IFACE" "$MAC" 2>/dev/null
+            MSG="<div class=\"flash-ok\">Magic packet wyslany do $MAC przez $IFACE.</div>"
+        else
+            MSG='<div class="flash-err">Nieprawidlowy format MAC. Wymagany: AA:BB:CC:DD:EE:FF</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "save" ]; then
+        MAC=$(get_param "$POST" "mac" | tr -cd 'a-fA-F0-9:')
+        NAME=$(get_param "$POST" "name" | tr -cd 'a-zA-Z0-9 _-.')
+        if echo "$MAC" | grep -qE '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$' && [ -n "$NAME" ]; then
+            echo "$MAC $NAME" >> "$WOL_FILE"
+            MSG="<div class=\"flash-ok\">Zapisano: $NAME ($MAC)</div>"
+        else
+            MSG='<div class="flash-err">Nieprawidlowy MAC lub pusta nazwa.</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "delete" ]; then
+        IDX=$(get_param "$POST" "idx" | tr -cd '0-9')
+        [ -n "$IDX" ] && [ -f "$WOL_FILE" ] && sed -i "${IDX}d" "$WOL_FILE" 2>/dev/null
+        MSG='<div class="flash-ok">Wpis usuniety.</div>'
+    fi
+
+    if [ "$ACTION" = "wake_saved" ]; then
+        IDX=$(get_param "$POST" "idx" | tr -cd '0-9')
+        IFACE=$(get_param "$POST" "iface" | tr -cd 'a-zA-Z0-9.')
+        [ -z "$IFACE" ] && IFACE="br-lan"
+        MAC=$(sed -n "${IDX}p" "$WOL_FILE" 2>/dev/null | cut -d' ' -f1)
+        if echo "$MAC" | grep -qE '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'; then
+            etherwake -i "$IFACE" "$MAC" 2>/dev/null
+            MSG="<div class=\"flash-ok\">Magic packet wyslany do $MAC.</div>"
+        fi
+    fi
+fi
+
+html_head "WoL" "wol"
+echo "$MSG"
+
+cat << 'HTML'
+<div class="g2">
+  <div class="card">
+    <div class="sec">Wyslij magic packet</div>
+    <form method="post">
+    <input type="hidden" name="action" value="wake">
+    <label>Adres MAC</label>
+    <input type="text" name="mac" placeholder="AA:BB:CC:DD:EE:FF" pattern="[0-9a-fA-F:]{17}" required>
+    <label>Interfejs</label>
+    <select name="iface">
+      <option value="br-lan">br-lan (LAN)</option>
+      <option value="wlan0">wlan0 (WiFi)</option>
+    </select>
+    <button type="submit" class="sm" style="margin-top:.6rem">&#9889; Wyslij WoL</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="sec">Zapisz urzadzenie</div>
+    <form method="post">
+    <input type="hidden" name="action" value="save">
+    <label>Adres MAC</label>
+    <input type="text" name="mac" placeholder="AA:BB:CC:DD:EE:FF" pattern="[0-9a-fA-F:]{17}" required>
+    <label>Nazwa</label>
+    <input type="text" name="name" placeholder="np. Desktop, NAS" required>
+    <button type="submit" class="sm" style="margin-top:.6rem">Zapisz</button>
+    </form>
+  </div>
+</div>
+HTML
+
+# Saved targets
+echo '<div class="card"><div class="sec">Zapisane urzadzenia</div>'
+if [ -f "$WOL_FILE" ] && [ -s "$WOL_FILE" ]; then
+    echo '<table><thead><tr><th>#</th><th>Nazwa</th><th>MAC</th><th>Akcje</th></tr></thead><tbody>'
+    idx=0
+    while IFS=' ' read -r mac name; do
+        idx=$(( idx + 1 ))
+        [ -z "$mac" ] && continue
+        printf '<tr><td>%d</td><td>%s</td><td><code>%s</code></td><td style="display:flex;gap:.4rem">' \
+            "$idx" "$name" "$mac"
+        printf '<form method="post" style="margin:0"><input type="hidden" name="action" value="wake_saved">'
+        printf '<input type="hidden" name="idx" value="%d">' "$idx"
+        printf '<input type="hidden" name="iface" value="br-lan">'
+        printf '<button type="submit" class="sm">&#9889; WoL</button></form>'
+        printf '<form method="post" style="margin:0"><input type="hidden" name="action" value="delete">'
+        printf '<input type="hidden" name="idx" value="%d">' "$idx"
+        printf '<button type="submit" class="sm danger">Usun</button></form>'
+        printf '</td></tr>\n'
+    done < "$WOL_FILE"
+    echo '</tbody></table>'
+else
+    echo '<p style="color:var(--pico-muted-color);margin:0">Brak zapisanych urzadzen.</p>'
+fi
+echo '</div>'
+
+html_foot

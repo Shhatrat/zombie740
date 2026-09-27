@@ -5,7 +5,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATESTAMP=$(date +%Y%m%d)
-VARIANTS="bridge bridge-wifi mini mini-wifi secure secure-web secure-web-en vpn"
+VARIANTS="bridge bridge-wifi mini mini-wifi secure secure-web secure-web-en vpn repeater"
 
 echo "=== ZOMBIE740 build-all ==="
 echo "Date: $DATESTAMP"

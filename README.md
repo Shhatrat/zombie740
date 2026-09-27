@@ -41,7 +41,7 @@ Custom **OpenWrt 24.10** firmware for the **TP-Link TL-WR740N v4** — a 2011 ro
 
 ## Variants
 
-Eight variants fit in 4MB flash. Pick one based on your use case.
+Nine variants fit in 4MB flash. Pick one based on your use case.
 
 | Variant | Size | Use case |
 |---|---|---|
@@ -53,38 +53,51 @@ Eight variants fit in 4MB flash. Pick one based on your use case.
 | 🌐 **SECURE-WEB** | ~3.6 MB | Like SECURE + shell CGI web panel in Polish at `http://192.168.1.1`. |
 | 🌐 **SECURE-WEB-EN** | ~3.6 MB | Like SECURE-WEB but with English web panel. |
 | 🔵 **VPN** | ~3.0 MB | VPN gateway. Like SECURE but routes LAN traffic through a WireGuard tunnel. |
+| 📡 **REPEATER** | ~3.8 MB | WiFi repeater / range extender. Connects to upstream WiFi (STA), bridges LAN ports, NAT, DHCP relay, web panel with WiFi config + WoL. |
 
 ### Package comparison
 
-| Package | BRIDGE | BRIDGE-WIFI | MINI | MINI-WIFI | SECURE | SECURE-WEB(-EN) | VPN |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| dropbear (SSH) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| dnsmasq (DHCP+DNS) | — | — | ✅ | ✅ | ✅ | ✅ | ✅ |
-| firewall4 | — | — | — | — | ✅ | ✅ | ✅ |
-| nftables | — | — | — | — | ✅ | ✅ | ✅ |
-| uhttpd (web server) | — | — | — | — | — | ✅ | — |
-| kmod-wireguard | — | — | — | — | — | — | ✅ |
-| wireguard-tools | — | — | — | — | — | — | ✅ |
-| swconfig (VLAN) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| netifd | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| mtd (flash tool) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| kmod-ath9k (WiFi) | — | ✅ | — | ✅ | — | — | — |
-| hostapd / wpad | — | wpad | — | hostapd-mini | — | — | — |
-| etherwake (WoL) | — | — | — | — | — | ✅ | — |
-| iperf3 | — | — | — | — | — | ✅ | — |
-| LuCI (web UI) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Package | BRIDGE | BRIDGE-WIFI | MINI | MINI-WIFI | SECURE | SECURE-WEB(-EN) | VPN | REPEATER |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| dropbear (SSH) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| dnsmasq (DHCP+DNS) | — | — | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| firewall4 | — | — | — | — | ✅ | ✅ | ✅ | — |
+| nftables | — | — | — | — | ✅ | ✅ | ✅ | — |
+| uhttpd (web server) | — | — | — | — | — | ✅ | — | ✅ |
+| kmod-wireguard | — | — | — | — | — | — | ✅ | — |
+| wireguard-tools | — | — | — | — | — | — | ✅ | — |
+| swconfig (VLAN) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| netifd | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| mtd (flash tool) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| kmod-ath9k (WiFi) | — | ✅ | — | ✅ | — | — | — | ✅ |
+| hostapd / wpad | — | wpad | — | hostapd-mini | — | — | — | wpa-supplicant-mini |
+| relayd (L2 bridge) | — | — | — | — | — | — | — | ✅ |
+| etherwake (WoL) | — | — | — | — | — | ✅ | — | ✅ |
+| iperf3 | — | — | — | — | — | ✅ | — | — |
+| LuCI (web UI) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### What's baked in (all variants)
 
 | Setting | Value |
 |---|---|
-| LAN IP | `192.168.1.1/24` |
-| SSH port | `22` (LAN only) |
+| LAN IP | `192.168.1.1/24` (REPEATER: `192.168.1.2/24`) |
+| SSH port | `22` (LAN only; REPEATER: no SSH — no dropbear) |
 | Root password | `admin` ← **change this** |
 | SSH banner | ZOMBIE740 ASCII art |
 | Hostname | `OpenWrt` |
 | Timezone | `CET-1CEST` (Europe/Warsaw) |
 | NTP | openwrt.pool.ntp.org |
+
+REPEATER-specific defaults:
+
+| Setting | Value |
+|---|---|
+| LAN IP | `192.168.1.2` (static, behind upstream router) |
+| Gateway | `192.168.1.1` (upstream router) |
+| WWAN (upstream WiFi) | SSID: `MyNetwork`, WPA2: `mypassword` — **change via web panel** |
+| Web panel | `http://192.168.1.2` — login: `admin` / `admin` |
+| WiFi mode | STA only (client) — no AP, connects to existing WiFi |
+| DHCP | relay via relayd from upstream router |
 
 ### SECURE / VPN firewall defaults
 
@@ -120,6 +133,19 @@ echo "admin:ZOMBIE740:$(echo -n 'admin:ZOMBIE740:newpassword' | md5sum | cut -c1
 ```
 
 > No HTTPS — web panel is only accessible from LAN (firewall blocks WAN access).
+
+### REPEATER panel
+
+The REPEATER variant adds a web panel (uhttpd + shell CGI + PicoCSS dark theme) served at `http://192.168.1.2` (the router's LAN IP). Panel is in Polish.
+
+| Page | URL | Description |
+|---|---|---|
+| Status | `/cgi-bin/status` | Uptime, RAM, WiFi signal strength, BSSID, LAN clients |
+| WiFi | `/cgi-bin/wifi` | Configure upstream SSID, password, encryption. Scan for networks. |
+| WoL | `/cgi-bin/wol` | Send Wake-on-LAN magic packets to MAC addresses on the LAN |
+| System | `/cgi-bin/system` | Reboot, sysupgrade flash |
+
+**Default login:** `admin` / `admin` (Digest auth — change immediately)
 
 ---
 
@@ -270,12 +296,14 @@ zombie740/
 ├── build-all.sh              ← build all variants sequentially
 ├── build-bridge.sh
 ├── build-mini.sh
+├── build-repeater.sh
 ├── build-secure.sh
 ├── build-secure-web.sh
 ├── build-vpn.sh
 ├── configs/
 │   ├── bridge.config         ← OpenWrt .config per variant
 │   ├── mini.config
+│   ├── repeater.config       ← stripped: no dropbear, no nftables, wpa-supplicant-mini
 │   ├── secure.config
 │   ├── secure-web.config     ← secure + uhttpd
 │   └── vpn.config
@@ -289,6 +317,23 @@ zombie740/
 └── files-variants/           ← per-variant overrides
     ├── bridge/etc/config/network
     ├── mini/etc/config/network
+    ├── repeater/             ← WiFi repeater
+    │   ├── etc/
+    │   │   ├── config/
+    │   │   │   ├── network   ← LAN static 192.168.1.2, wwan DHCP
+    │   │   │   ├── wireless  ← STA mode, SSID/key placeholders
+    │   │   │   ├── relayd    ← L2 bridge lan ↔ wwan
+    │   │   │   └── uhttpd    ← web panel on :80
+    │   │   └── uhttpd.auth   ← Digest auth (admin:admin — change this)
+    │   └── www/
+    │       ├── pico.min.css
+    │       └── cgi-bin/
+    │           ├── common.sh ← shared functions
+    │           ├── status    ← uptime, RAM, WiFi signal, LAN clients
+    │           ├── wifi      ← configure SSID/key, scan networks
+    │           ├── wol       ← Wake-on-LAN (etherwake)
+    │           ├── system    ← reboot, sysupgrade
+    │           └── logout    ← forces 401 re-auth
     ├── secure/etc/config/
     │   ├── network
     │   └── firewall
@@ -356,6 +401,7 @@ The AR9330 WiFi chip is physically present on the board. It fits in the BRIDGE-W
 |---|---|---|
 | BRIDGE-WIFI | ✅ AP, WPA2 | wpad-basic-mbedtls, ~900 KB overhead |
 | MINI-WIFI | ✅ AP, WPA2 | hostapd-mini (AP-only), ~650 KB overhead |
+| REPEATER | ✅ STA (client) | wpa-supplicant-mini (STA-only, no AP), ~400 KB overhead |
 | SECURE / VPN | ❌ | firewall4+nftables leaves no room |
 
 Default WiFi credentials (change after flashing!):

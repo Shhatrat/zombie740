@@ -1,0 +1,134 @@
+#!/bin/sh
+. /www/cgi-bin/common.sh
+
+MSG=""
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+    POST=$(parse_post)
+    ACTION=$(get_param "$POST" "action")
+
+    if [ "$ACTION" = "connect" ]; then
+        SSID=$(get_param "$POST" "ssid" | tr -cd 'a-zA-Z0-9 _-.,!@#$%^&*()')
+        KEY=$(get_param "$POST" "key")
+        ENC=$(get_param "$POST" "enc" | tr -cd 'a-zA-Z0-9-')
+        [ -z "$ENC" ] && ENC="psk2"
+
+        if [ -z "$SSID" ]; then
+            MSG='<div class="flash-err">SSID nie moze byc puste.</div>'
+        elif [ "$ENC" != "none" ] && [ ${#KEY} -lt 8 ]; then
+            MSG='<div class="flash-err">Haslo musi miec co najmniej 8 znakow.</div>'
+        else
+            uci set wireless.wwan.ssid="$SSID"
+            uci set wireless.wwan.encryption="$ENC"
+            if [ "$ENC" = "none" ]; then
+                uci delete wireless.wwan.key 2>/dev/null
+            else
+                uci set wireless.wwan.key="$KEY"
+            fi
+            uci set wireless.wwan.disabled='0'
+            uci commit wireless
+            wifi up >/dev/null 2>&1 &
+            MSG='<div class="flash-ok">Konfiguracja zapisana. Lacze z: '"$SSID"'...</div>'
+        fi
+    fi
+
+    if [ "$ACTION" = "scan" ]; then
+        SCAN=$(iwinfo wlan0 scan 2>/dev/null)
+        html_head "WiFi" "wifi"
+        echo "$MSG"
+        echo '<div class="card"><div class="sec">Wyniki skanowania</div>'
+        if [ -n "$SCAN" ]; then
+            echo '<table><thead><tr><th>SSID</th><th>Sygnal</th><th>Kanal</th><th>Szyfrowanie</th><th></th></tr></thead><tbody>'
+            echo "$SCAN" | awk '
+            /^Cell/{ssid=""; signal=""; channel=""; enc=""}
+            /ESSID:/{match($0,/"(.+)"/,a); ssid=a[1]}
+            /Signal:/{signal=$2" "$3}
+            /Channel:/{channel=$2}
+            /Encryption:/{sub(/.*Encryption: /,""); enc=$0}
+            /ESSID:/{
+                if(ssid!="")
+                    printf "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><a href=\"/cgi-bin/wifi?ssid=%s\">Wybierz</a></td></tr>\n",
+                        ssid,signal,channel,enc,ssid
+            }
+            '
+            echo '</tbody></table>'
+        else
+            echo '<p style="color:var(--pico-muted-color);margin:0">Brak wynikow. Upewnij sie ze WiFi jest wlaczone.</p>'
+        fi
+        echo '</div>'
+        # Show connect form below scan results
+        CURRENT_SSID=$(uci get wireless.wwan.ssid 2>/dev/null)
+        echo '<div class="card"><div class="sec">Polacz</div>'
+        cat << HTML
+<form method="post">
+<input type="hidden" name="action" value="connect">
+<label>SSID</label>
+<input type="text" name="ssid" value="${CURRENT_SSID}" placeholder="Nazwa sieci" required>
+<label>Haslo</label>
+<input type="password" name="key" placeholder="Haslo WiFi (min 8 znakow)">
+<label>Szyfrowanie</label>
+<select name="enc">
+  <option value="psk2">WPA2-PSK</option>
+  <option value="psk">WPA-PSK</option>
+  <option value="none">Brak (otwarta)</option>
+</select>
+<button type="submit" class="sm" style="margin-top:.6rem">Polacz</button>
+</form>
+HTML
+        echo '</div>'
+        html_foot
+        exit 0
+    fi
+fi
+
+# Pre-fill SSID from GET param (from scan results)
+QUERY_SSID=$(echo "${QUERY_STRING}" | tr '&' '\n' | grep '^ssid=' | head -1 | cut -d= -f2- | \
+    sed 's/+/ /g; s/%/\\x/g' | xargs printf '%b' 2>/dev/null)
+
+CURRENT_SSID=$(uci get wireless.wwan.ssid 2>/dev/null)
+CURRENT_ENC=$(uci get wireless.wwan.encryption 2>/dev/null)
+WIFI_SIGNAL=$(iwinfo wlan0 info 2>/dev/null | awk '/Signal/{print $2}')
+WIFI_QUALITY=$(iwinfo wlan0 info 2>/dev/null | awk '/Quality/{print $2}' | cut -d/ -f1)
+WIFI_QUALITY_MAX=$(iwinfo wlan0 info 2>/dev/null | awk '/Quality/{print $2}' | cut -d/ -f2)
+[ -n "$WIFI_QUALITY" ] && [ -n "$WIFI_QUALITY_MAX" ] && \
+    WIFI_PCT=$(( WIFI_QUALITY * 100 / WIFI_QUALITY_MAX )) || WIFI_PCT=0
+
+html_head "WiFi" "wifi"
+echo "$MSG"
+
+cat << HTML
+<div class="g2">
+  <div class="card">
+    <div class="sec">Aktualny status</div>
+    <table><tbody>
+      <tr><th>SSID</th><td>${CURRENT_SSID:-—}</td></tr>
+      <tr><th>Szyfrowanie</th><td>${CURRENT_ENC:-—}</td></tr>
+      <tr><th>Sygnal</th><td>${WIFI_SIGNAL:-—} dBm (${WIFI_PCT}%)</td></tr>
+    </tbody></table>
+    <form method="post" style="margin-top:.8rem">
+    <input type="hidden" name="action" value="scan">
+    <button type="submit" class="sm">Skanuj sieci</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="sec">Zmien siec</div>
+    <form method="post">
+    <input type="hidden" name="action" value="connect">
+    <label>SSID</label>
+    <input type="text" name="ssid" value="${QUERY_SSID:-$CURRENT_SSID}" placeholder="Nazwa sieci WiFi" required>
+    <label>Haslo</label>
+    <input type="password" name="key" placeholder="Haslo (min 8 znakow)">
+    <label>Szyfrowanie</label>
+    <select name="enc">
+      <option value="psk2"$([ "$CURRENT_ENC" = "psk2" ] && echo ' selected')>WPA2-PSK</option>
+      <option value="psk"$([ "$CURRENT_ENC" = "psk" ] && echo ' selected')>WPA-PSK</option>
+      <option value="none"$([ "$CURRENT_ENC" = "none" ] && echo ' selected')>Brak (otwarta)</option>
+    </select>
+    <button type="submit" class="sm" style="margin-top:.6rem">Zapisz i polacz</button>
+    </form>
+  </div>
+</div>
+HTML
+
+html_foot

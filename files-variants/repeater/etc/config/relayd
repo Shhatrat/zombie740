@@ -1,0 +1,5 @@
+config relay
+	option network1 'lan'
+	option network2 'wwan'
+	option forward_bcast '1'
+	option forward_dhcp '1'
