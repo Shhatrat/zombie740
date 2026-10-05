@@ -53,13 +53,13 @@ Nine variants fit in 4MB flash. Pick one based on your use case.
 | 🌐 **SECURE-WEB** | ~3.6 MB | Like SECURE + shell CGI web panel in Polish at `http://192.168.1.1`. |
 | 🌐 **SECURE-WEB-EN** | ~3.6 MB | Like SECURE-WEB but with English web panel. |
 | 🔵 **VPN** | ~3.0 MB | VPN gateway. Like SECURE but routes LAN traffic through a WireGuard tunnel. |
-| 📡 **REPEATER** | ~3.8 MB | WiFi repeater / range extender. Connects to upstream WiFi (STA), bridges LAN ports, NAT, DHCP relay, web panel with WiFi config + WoL. |
+| 📡 **REPEATER** | ~3.8 MB | WiFi repeater / range extender. Connects to upstream WiFi (STA), bridges LAN ports, NAT, DHCP relay, SSH management, web panel with WiFi config + WoL. |
 
 ### Package comparison
 
 | Package | BRIDGE | BRIDGE-WIFI | MINI | MINI-WIFI | SECURE | SECURE-WEB(-EN) | VPN | REPEATER |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| dropbear (SSH) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| dropbear (SSH) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | dnsmasq (DHCP+DNS) | — | — | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | firewall4 | — | — | — | — | ✅ | ✅ | ✅ | — |
 | nftables | — | — | — | — | ✅ | ✅ | ✅ | — |
@@ -81,7 +81,7 @@ Nine variants fit in 4MB flash. Pick one based on your use case.
 | Setting | Value |
 |---|---|
 | LAN IP | `192.168.1.1/24` (REPEATER: `192.168.1.2/24`) |
-| SSH port | `22` (LAN only; REPEATER: no SSH — no dropbear) |
+| SSH port | `22` (LAN only) |
 | Root password | `admin` ← **change this** |
 | SSH banner | ZOMBIE740 ASCII art |
 | Hostname | `OpenWrt` |
@@ -303,7 +303,7 @@ zombie740/
 ├── configs/
 │   ├── bridge.config         ← OpenWrt .config per variant
 │   ├── mini.config
-│   ├── repeater.config       ← stripped: no dropbear, no nftables, wpa-supplicant-mini
+│   ├── repeater.config       ← stripped: no nftables, wpa-supplicant-mini, dropbear SSH
 │   ├── secure.config
 │   ├── secure-web.config     ← secure + uhttpd
 │   └── vpn.config
