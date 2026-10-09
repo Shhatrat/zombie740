@@ -1,0 +1,16 @@
+--- a/src/tplink-safeloader.c
++++ b/src/tplink-safeloader.c
+@@ -0,0 +0,0 @@
+--- a/mktplinkfw.c
++++ b/mktplinkfw.c
+@@ -0,0 +0,0 @@
+diff --git a/mktplinkfw.c b/mktplinkfw.c
+--- a/mktplinkfw.c
++++ b/mktplinkfw.c
+@@ -157,7 +157,7 @@ static struct board_info boards[] = {
+ 		.hw_id		= HWID_TL_WR740N_V4,
+ 		.hw_rev		= 1,
+ 		.layout		= "4mlzma",
+-		.rootfs_ofs	= 0x1E0000,
++		.rootfs_ofs	= 0x260000,
+ 	}, {
